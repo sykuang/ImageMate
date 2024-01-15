@@ -1,7 +1,7 @@
 {
-  "name": "electron-vue-template",
+  "name": "ImageMate",
   "version": "0.1.0",
-  "description": "A minimal Electron + Vue application",
+  "description": "A simple image viewer built with Electron and Vue.js",
   "main": "build/main/main.js",
   "scripts": {
     "dev": "node scripts/dev-server.js",
@@ -10,21 +10,24 @@
     "build:mac": "node scripts/build.js && electron-builder --mac",
     "build:linux": "node scripts/build.js && electron-builder --linux"
   },
-  "repository": "https://github.com/deluze/electron-vue-template",
+  "repository": "https://github.com/sykuang/ImageViewer.git",
   "author": {
-    "name": "Deluze",
-    "url": "https://github.com/Deluze"
+    "name": "Sykuang",
+    "url": "https://github.com/Sykuang"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^4.4.1",
+    "@originjs/vite-plugin-commonjs": "^1.0.3",
+    "@vitejs/plugin-vue": "^5.0.3",
     "chalk": "^4.1.2",
     "chokidar": "^3.5.3",
-    "electron": "^27.1.0",
+    "electron": "^28.1.3",
     "electron-builder": "^24.2.1",
     "typescript": "^5.2.2",
-    "vite": "^4.5.0"
+    "vite": "^5.0.11"
   },
   "dependencies": {
-    "vue": "^3.3.8"
+    "electron-store": "^8.1.0",
+    "primevue": "^3.46.0",
+    "vue": "^3.4.13"
   }
 }

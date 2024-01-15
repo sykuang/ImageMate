@@ -1,7 +1,15 @@
-const Path = require('path');
-const vuePlugin = require('@vitejs/plugin-vue')
+// const Path = require('path');
+import * as Path from 'path';
+// const vuePlugin = require('@vitejs/plugin-vue')
+import vuePlugin from '@vitejs/plugin-vue';
+import { viteCommonjs } from '@originjs/vite-plugin-commonjs';
+// const { defineConfig } = require('vite');
+import { defineConfig } from 'vite';
+import { fileURLToPath } from 'url';
 
-const { defineConfig } = require('vite');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = Path.dirname(__filename);
+
 
 /**
  * https://vitejs.dev/config
@@ -17,7 +25,7 @@ const config = defineConfig({
         outDir: Path.join(__dirname, 'build', 'renderer'),
         emptyOutDir: true,
     },
-    plugins: [vuePlugin()],
+    plugins: [vuePlugin(), viteCommonjs()],
 });
 
-module.exports = config;
+export default config;
