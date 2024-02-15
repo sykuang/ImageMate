@@ -1,9 +1,9 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session, MenuItemConstructorOptions, Menu, dialog } from 'electron';
 import { join, dirname, basename, extname } from 'path';
 import { readFileSync, statSync, readdirSync } from 'fs';
-const Store = require('electron-store');
-
-const config = new Store()
+// import Store from 'electron-store';
+import store from './store';
+// const config = new Store()
 interface ImageInfo {
   path: string;
 }
@@ -12,9 +12,36 @@ var currentIndex: number = -1;
 var openFileName: string = "";
 const WindowTitleBarPadding = 32;
 const files: string[] = [];
-const ImageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+const ImageExtensions = [".jpeg",
+  ".jpg",
+  ".png",
+  ".gif",
+  ".bmp",
+  ".ico",
+  ".tiff",
+  ".tif",
+  ".raw",
+  ".svg",
+  ".webp"];
+const menuTemplate: MenuItemConstructorOptions[] = [{
+  label: 'File',
+  submenu: [
+    {
+      label: 'Open', click: async () => {
+        const file = await dialog.showOpenDialog({ properties: ['openFile'] });
+        if (file.canceled) return;
+        openFileName = file.filePaths[0];
+        getImageFromFolder(dirname(openFileName), openFileName);
+        setImage(openFileName, 0);
+
+      }
+    },
+    { "role": "quit" }]
+}];
 async function getImageFromFolder(folder: string, openFileName: string) {
   if (!folder) return;
+  //Clear files if we are opening a new folder
+  files.length = 0;
   var checkFile = async (f: string) => {
     try {
       const stats = await statSync(f);
@@ -50,17 +77,19 @@ async function setIndex(index: number) {
 }
 async function createWindow() {
   mainWindow = new BrowserWindow({
-    width: config.get('winBounds.width', 800),
-    height: config.get('winBounds.height', 600),
+    width: store.get('WinBounds.width', 800),
+    height: store.get('WinBounds.height', 600),
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       nodeIntegration: true,
       contextIsolation: true,
+      devTools: !app.isPackaged,
     }
   });
-  if (config.get('winBounds.x') && config.get('winBounds.y')) {
-    mainWindow.setPosition(config.get('winBounds.x'), config.get('winBounds.y'));
-  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
+  mainWindow.removeMenu();
+  mainWindow.setPosition(store.get('winBounds.x'), store.get('winBounds.y'));
   if (process.env.NODE_ENV === 'development') {
     const rendererPort = process.argv[2];
     mainWindow.loadURL(`http://localhost:${rendererPort}`);
@@ -71,15 +100,13 @@ async function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', async () => {
     if (openFileName === "") return;
-    var folder: string = dirname(openFileName);
     // First load the image
-    await setImage(openFileName, 0);
-    // Then get all the images in the folder
-    getImageFromFolder(folder, openFileName);
+    setImage(openFileName, 0);
   });
   mainWindow.on('close', () => {
-    config.set('winBounds', mainWindow.getBounds())
+    store.set("WinBounds", mainWindow.getBounds())
   })
+  getImageFromFolder(dirname(openFileName), openFileName);
 }
 
 app.whenReady().then(() => {
@@ -124,11 +151,15 @@ ipcMain.on('message', (event, message) => {
 ipcMain.on("keyPress", (event, key) => {
   console.log(key);
   // if current index is -1, we don't have any image to show
-  if (currentIndex < 0) return;
-  if (key === "ArrowLeft") {
-    currentIndex = currentIndex === 0 ? currentIndex = files.length - 1 : currentIndex - 1;
-  } else if (key === "ArrowRight") {
-    currentIndex = (currentIndex + 1) % files.length;
+  if (currentIndex < 0) {
+    setImage(openFileName, 0);
   }
-  setImage(files[currentIndex], currentIndex);
+  else {
+    if (key === "ArrowLeft") {
+      currentIndex = currentIndex === 0 ? currentIndex = files.length - 1 : currentIndex - 1;
+    } else if (key === "ArrowRight") {
+      currentIndex = (currentIndex + 1) % files.length;
+    }
+    setImage(files[currentIndex], currentIndex);
+  }
 });
