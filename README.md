@@ -1,7 +1,8 @@
 <div align="center"> 
 
 # ImageMate
-  
+![Image Alt text](/images/icon/icon.png)
+
 </div>
 
 ## About

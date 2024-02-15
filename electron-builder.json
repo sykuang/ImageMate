@@ -1,5 +1,6 @@
 {
-    "appId": "com.electron.app",
+    "appId": "com.kktek.app",
+    "icon": "images/icon/icon.png",
     "directories": {
         "output": "dist"
     },
@@ -7,25 +8,31 @@
         "oneClick": false,
         "perMachine": false,
         "allowToChangeInstallationDirectory": true,
-        "shortcutName": "Electron App"
+        "shortcutName": "ImageMate"
     },
     "win": {
         "target": "nsis"
     },
-    "linux":  {
-        "target": ["snap"]
+    "linux": {
+        "target": [
+            "snap"
+        ]
     },
     "files": [
         "build/main/**/*",
         {
             "from": "build/renderer",
             "to": "renderer",
-            "filter": ["**/*"]
+            "filter": [
+                "**/*"
+            ]
         },
         {
             "from": "src/main/static",
             "to": "static",
-            "filter": ["**/*"]
+            "filter": [
+                "**/*"
+            ]
         },
         "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
         "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
@@ -40,7 +47,19 @@
     ],
     "fileAssociations": [
         {
-            "ext": ["jpeg","jpg","png","gif","bmp","ico","tiff","tif","raw","svg","webp"],
+            "ext": [
+                "jpeg",
+                "jpg",
+                "png",
+                "gif",
+                "bmp",
+                "ico",
+                "tiff",
+                "tif",
+                "raw",
+                "svg",
+                "webp"
+            ],
             "name": "Image",
             "role": "Viewer"
         }
