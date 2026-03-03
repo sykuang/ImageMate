@@ -1,0 +1,64 @@
+# SwiftLint configuration for ImageMate (macOS SwiftUI app, Swift 6.1, macOS 14.0+)
+# Philosophy: warn on style, error only on real problems.
+
+# Only lint app source and package sources
+included:
+  - ImageMate
+  - ImageMatePackage/Sources
+
+excluded:
+  - build
+  - .build
+  - ImageMatePackage/.build
+  - "*.xcodeproj"
+  - "*.xcworkspace"
+
+# --- Rule toggles ---
+
+# Disabled rules
+disabled_rules:
+  - todo                        # Allow TODO/FIXME comments freely
+  - blanket_disable_command     # Allow targeted swiftlint:disable without nag
+
+# Opt-in rules worth enabling
+opt_in_rules:
+  - vertical_whitespace
+  - implicit_optional_initialization  # was redundant_optional_initialization (renamed)
+  - empty_count                 # Prefer .isEmpty over .count == 0
+  - closure_spacing             # Require spaces inside closure braces
+  - force_unwrapping            # Must be opt-in to configure severity
+
+# --- Rule configuration ---
+
+# Line length: generous for SwiftUI view builders
+line_length:
+  warning: 150
+  error: 200
+  ignores_urls: true
+  ignores_interpolated_strings: true
+
+# File length: SwiftUI files with previews can grow
+file_length:
+  warning: 500
+  error: 1000
+
+# Function body length: SwiftUI body properties can be long
+function_body_length:
+  warning: 60
+  error: 100
+
+# Type body length: view structs with many subviews (ContentView is 628 lines)
+type_body_length:
+  warning: 400
+  error: 700
+
+# Force cast/unwrap: warn, don't error — common in AppKit/SwiftUI interop
+force_cast: warning
+force_try: warning
+force_unwrapping:
+  severity: warning
+
+# Trailing whitespace: ignore in comments (common with doc markup)
+trailing_whitespace:
+  ignores_comments: true
+  ignores_empty_lines: true

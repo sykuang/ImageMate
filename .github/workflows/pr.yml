@@ -1,0 +1,54 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Run SwiftLint
+        run: swiftlint lint --reporter github-actions-logging
+
+  build-and-test:
+    name: Build & Test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Resolve packages
+        run: xcodebuild -resolvePackageDependencies -workspace ImageMate.xcworkspace -scheme ImageMate
+      - name: Build for Testing
+        run: |
+          xcodebuild build-for-testing \
+            -workspace ImageMate.xcworkspace \
+            -scheme ImageMate \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="-"
+      - name: Run Package Tests
+        run: |
+          cd ImageMatePackage
+          swift test
+      - name: Run UI Tests
+        run: |
+          xcodebuild test-without-building \
+            -workspace ImageMate.xcworkspace \
+            -scheme ImageMate \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/DerivedData

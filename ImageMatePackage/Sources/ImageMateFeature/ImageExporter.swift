@@ -80,6 +80,10 @@ public struct ImageExporter {
     ) throws {
         Logger.imageOperations.info("Exporting image as \(format.displayName) to \(url.path)")
 
+        if format == .heic && !isHEICSupported {
+            throw ImageExportError.unsupportedFormat
+        }
+
         guard let cgImage = image.cgImage(
             forProposedRect: nil,
             context: nil,
