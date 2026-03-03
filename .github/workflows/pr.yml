@@ -32,23 +32,23 @@ jobs:
         run: xcodebuild -version
       - name: Resolve packages
         run: xcodebuild -resolvePackageDependencies -workspace ImageMate.xcworkspace -scheme ImageMate
-      - name: Build
+      - name: Build for Testing
         run: |
-          xcodebuild build \
+          xcodebuild build-for-testing \
             -workspace ImageMate.xcworkspace \
             -scheme ImageMate \
             -configuration Debug \
-            -destination 'platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="-"
       - name: Run Package Tests
         run: |
           cd ImageMatePackage
           swift test
       - name: Run UI Tests
         run: |
-          xcodebuild test \
+          xcodebuild test-without-building \
             -workspace ImageMate.xcworkspace \
             -scheme ImageMate \
-            -configuration Debug \
             -destination 'platform=macOS,arch=arm64' \
-            CODE_SIGN_IDENTITY="-"
+            -derivedDataPath build/DerivedData
