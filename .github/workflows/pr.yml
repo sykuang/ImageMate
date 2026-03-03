@@ -50,5 +50,5 @@ jobs:
             -workspace ImageMate.xcworkspace \
             -scheme ImageMate \
             -configuration Debug \
-            -destination 'platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGN_IDENTITY="-"
