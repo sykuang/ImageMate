@@ -49,7 +49,7 @@ public class ImageViewModel: ObservableObject {
         
         // Filter only image files
         var imageUrls = urls.filter { url in
-            let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "heic", "webp"]
+            let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
             return validExtensions.contains(url.pathExtension.lowercased())
         }
         
@@ -96,7 +96,7 @@ public class ImageViewModel: ObservableObject {
                 Logger.imageOperations.debug("Directory contains \(contents.count) total files")
                 
                 let allImages = contents.filter { url in
-                    let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "heic", "webp"]
+                    let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
                     let ext = url.pathExtension.lowercased()
                     let isValid = validExtensions.contains(ext)
                     if !isValid {

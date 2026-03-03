@@ -36,6 +36,13 @@ struct ImageMateApp: App {
                     openImage()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                
+                Divider()
+                
+                Button("Export As...") {
+                    exportImage()
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
             }
             
             CommandGroup(replacing: .appSettings) {
@@ -52,6 +59,11 @@ struct ImageMateApp: App {
         // Trigger the open image action in the ContentView
         // We need to post a notification that ContentView can listen to
         NotificationCenter.default.post(name: NSNotification.Name("OpenImageFromMenu"), object: nil)
+    }
+    
+    private func exportImage() {
+        logger.info("📤 Export image menu triggered")
+        NotificationCenter.default.post(name: NSNotification.Name("ExportImageFromMenu"), object: nil)
     }
     
     private func handleOpenURL(_ url: URL) {
@@ -100,6 +112,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         logger.info("✅ AppDelegate: Application did finish launching")
         logger.info("📋 Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
         logger.info("📋 Registered document types: \(String(describing: Bundle.main.infoDictionary?["CFBundleDocumentTypes"]))")
+    }
+    
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        logger.info("🚪 Last window closed - quitting app")
+        return true
     }
     
     func application(_ application: NSApplication, open urls: [URL]) {
