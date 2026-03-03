@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Build, Sign & Release
+    name: Build & Release
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -24,84 +24,28 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Import signing certificate
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          # Create temporary keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # Import certificate
-          CERT_PATH=$RUNNER_TEMP/certificate.p12
-          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
-          security import $CERT_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH login.keychain-db
-
       - name: Resolve packages
         run: xcodebuild -resolvePackageDependencies -workspace ImageMate.xcworkspace -scheme ImageMate
 
-      - name: Build Release Archive
+      - name: Build Release
         run: |
-          xcodebuild archive \
+          xcodebuild build \
             -workspace ImageMate.xcworkspace \
             -scheme ImageMate \
             -configuration Release \
-            -archivePath build/ImageMate.xcarchive \
             -destination 'generic/platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="-" \
             MARKETING_VERSION=${{ steps.version.outputs.VERSION }}
-
-      - name: Export Archive
-        run: |
-          cat > build/ExportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>developer-id</string>
-            <key>teamID</key>
-            <string>${{ secrets.APPLE_TEAM_ID }}</string>
-          </dict>
-          </plist>
-          EOF
-
-          xcodebuild -exportArchive \
-            -archivePath build/ImageMate.xcarchive \
-            -exportOptionsPlist build/ExportOptions.plist \
-            -exportPath build/Export
 
       - name: Create DMG
         run: |
-          mkdir -p build/Build/Products/Release
-          cp -R build/Export/ImageMate.app build/Build/Products/Release/
-          
-          # Create DMG with Applications symlink for drag-to-install
           DMG_CONTENTS=$(mktemp -d)
-          cp -R build/Build/Products/Release/ImageMate.app "$DMG_CONTENTS/"
+          cp -R build/DerivedData/Build/Products/Release/ImageMate.app "$DMG_CONTENTS/"
           ln -s /Applications "$DMG_CONTENTS/Applications"
           hdiutil create -volname ImageMate -srcfolder "$DMG_CONTENTS" \
             -ov -format UDZO ImageMate.dmg
           rm -rf "$DMG_CONTENTS"
-
-      - name: Notarize DMG
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          xcrun notarytool submit ImageMate.dmg \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-
-          xcrun stapler staple ImageMate.dmg
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -112,11 +56,9 @@ jobs:
 
             ### Installation
             1. Download `ImageMate.dmg`
-            2. Open the DMG and drag ImageMate to Applications
-            3. Launch from Applications folder
+            2. Open the DMG and drag ImageMate to **Applications**
+            3. On first launch, macOS may block the app. To allow it:
+               - **Right-click** ImageMate.app → **Open** → click **Open** in the dialog
+               - Or run: `xattr -cr /Applications/ImageMate.app`
           files: ImageMate.dmg
           generate_release_notes: true
-
-      - name: Cleanup keychain
-        if: always()
-        run: security delete-keychain $RUNNER_TEMP/signing.keychain-db || true
