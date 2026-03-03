@@ -17,7 +17,7 @@ A lightweight, native macOS image viewer built with SwiftUI. Fast browsing, keyb
 
 ### Supported Formats
 
-JPEG · PNG · GIF · BMP · TIFF · HEIC/HEIF · WebP · SVG
+JPEG · PNG · GIF · BMP · TIFF · HEIC/HEIF · WebP
 
 ## Requirements
 
@@ -90,7 +90,7 @@ swiftlint lint
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | **PR Quality Gate** | Pull request → `main` | SwiftLint ‖ Build + unit tests + UI tests |
-| **Release** | Push tag `v*` | Archive → sign → DMG → notarize → GitHub Release |
+| **Release** | Push tag `v*` | Build + ad-hoc sign → DMG → GitHub Release |
 
 ### Release Process
 
