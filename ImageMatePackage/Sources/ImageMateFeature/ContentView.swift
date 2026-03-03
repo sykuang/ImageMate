@@ -23,6 +23,8 @@ public struct ContentView: View {
     @State private var showingLibrary = false
     @State private var libraryImageUrls: [URL] = []
     @State private var mouseMonitor: Any?
+    @State private var showExportError = false
+    @State private var exportErrorMessage = ""
     
     public init(settings: AppSettings = AppSettings()) {
         self.settings = settings
@@ -194,6 +196,17 @@ public struct ContentView: View {
                 }
             }
             
+            // Listen for menu-triggered export action
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("ExportImageFromMenu"),
+                object: nil,
+                queue: .main
+            ) { _ in
+                Task { @MainActor in
+                    exportImage()
+                }
+            }
+            
             // Listen for URL opening from Finder
             NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("OpenURLFromFinder"),
@@ -227,6 +240,7 @@ public struct ContentView: View {
             }
             
             NotificationCenter.default.removeObserver(self, name: NSNotification.Name("OpenImageFromMenu"), object: nil)
+            NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ExportImageFromMenu"), object: nil)
             NotificationCenter.default.removeObserver(self, name: NSNotification.Name("OpenURLFromFinder"), object: nil)
         }
         .onChange(of: imageViewModel.currentIndex) {
@@ -259,6 +273,11 @@ public struct ContentView: View {
         }
         .sheet(isPresented: $showingLibrary) {
             libraryView
+        }
+        .alert("Export Failed", isPresented: $showExportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportErrorMessage)
         }
     }
     
@@ -427,6 +446,67 @@ public struct ContentView: View {
         return imageExtensions.contains(url.pathExtension.lowercased())
     }
     
+    // MARK: - Export
+    
+    public func exportImage() {
+        guard let image = imageViewModel.currentImage else {
+            Logger.imageOperations.warning("No image to export")
+            return
+        }
+        
+        let panel = NSSavePanel()
+        panel.title = "Export Image"
+        panel.prompt = "Export"
+        
+        // Default filename derived from current file
+        let baseName: String
+        if let currentName = imageViewModel.currentFileName {
+            baseName = (currentName as NSString).deletingPathExtension
+        } else {
+            baseName = "Untitled"
+        }
+        panel.nameFieldStringValue = "\(baseName).heic"
+        
+        // Build allowed types from ExportFormat
+        panel.allowedContentTypes = ExportFormat.allCases.map(\.utType)
+        
+        // Use an accessory view for format selection
+        let formatPicker = ExportFormatAccessoryView { selectedFormat in
+            panel.allowedContentTypes = [selectedFormat.utType]
+            panel.nameFieldStringValue = "\(baseName).\(selectedFormat.fileExtension)"
+        }
+        let hostingView = NSHostingView(rootView: formatPicker)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 250, height: 50)
+        panel.accessoryView = hostingView
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            // Determine format from the file extension
+            let ext = url.pathExtension.lowercased()
+            let format: ExportFormat
+            switch ext {
+            case "heic", "heif":
+                format = .heic
+            case "jpg", "jpeg":
+                format = .jpeg
+            case "png":
+                format = .png
+            case "tiff", "tif":
+                format = .tiff
+            default:
+                format = .heic
+            }
+            
+            do {
+                try ImageExporter.export(image, to: url, format: format)
+                Logger.imageOperations.info("Image exported to \(url.path)")
+            } catch {
+                Logger.imageOperations.error("Export failed: \(error.localizedDescription)")
+                exportErrorMessage = error.localizedDescription
+                showExportError = true
+            }
+        }
+    }
+    
     private func handleFinderOpen(url: URL, imageViewModel: ImageViewModel) {
         Logger.imageOperations.info("🎯 handleFinderOpen called with URL: \(url.path)")
         
@@ -563,6 +643,8 @@ public struct ContentView: View {
     }
     
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        Logger.imageOperations.info("🎯 handleDrop: Received \(providers.count) providers")
+        
         // Use a thread-safe wrapper class to avoid concurrency warnings
         final class ThreadSafeURLArray: @unchecked Sendable {
             private var urls: [URL] = []
@@ -589,8 +671,16 @@ public struct ContentView: View {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                 defer { group.leave() }
                 
+                if let error = error {
+                    Logger.imageOperations.error("❌ Drop error: \(error.localizedDescription)")
+                    return
+                }
+                
                 if let data = item as? Data,
                    let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    Logger.imageOperations.info("📄 Dropped file: \(url.path)")
+                    // Start accessing security-scoped resource for sandboxed apps
+                    _ = url.startAccessingSecurityScopedResource()
                     collectedUrls.append(url)
                 }
             }
@@ -598,10 +688,18 @@ public struct ContentView: View {
         
         group.notify(queue: .main) {
             let urls = collectedUrls.getAll()
+            Logger.imageOperations.info("📥 Processing \(urls.count) dropped files")
             if !urls.isEmpty {
+                // Grant directory access for parent folder
+                if let firstUrl = urls.first {
+                    let parentDir = firstUrl.deletingLastPathComponent()
+                    _ = parentDir.startAccessingSecurityScopedResource()
+                    self.imageViewModel.grantDirectoryAccess(parentDir)
+                }
                 self.imageViewModel.loadImages(from: urls)
                 self.resetZoom()
                 self.resizeWindowToFitImage()
+                Logger.imageOperations.info("✅ Dropped images loaded successfully")
             }
         }
         
