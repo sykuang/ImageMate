@@ -27,7 +27,11 @@ JPEG · PNG · GIF · BMP · TIFF · HEIC/HEIF · WebP · SVG
 
 ### Download
 
-Download the latest `ImageMate.dmg` from [Releases](https://github.com/sykuang/ImageMate/releases), open it, and drag ImageMate to **Applications**.
+1. Download the latest `ImageMate.dmg` from [Releases](https://github.com/sykuang/ImageMate/releases)
+2. Open the DMG and drag ImageMate to **Applications**
+3. On first launch, macOS Gatekeeper may block the unsigned app. To allow it:
+   - **Right-click** ImageMate.app → **Open** → click **Open** in the dialog, or
+   - Run in Terminal: `xattr -cr /Applications/ImageMate.app`
 
 ### Build from Source
 
@@ -91,9 +95,9 @@ swiftlint lint
 ### Release Process
 
 1. Tag a version: `git tag v1.2.0 && git push --tags`
-2. The release workflow builds a signed, notarized DMG and publishes a GitHub Release automatically.
+2. The release workflow builds an ad-hoc signed DMG and publishes a GitHub Release automatically.
 
-Required repository secrets for release: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_ID`, `APPLE_APP_PASSWORD`, `KEYCHAIN_PASSWORD`.
+> **Note:** The app is not notarized (no paid Apple Developer account). Users will need to bypass Gatekeeper on first launch (see [Installation](#installation)).
 
 ## License
 
