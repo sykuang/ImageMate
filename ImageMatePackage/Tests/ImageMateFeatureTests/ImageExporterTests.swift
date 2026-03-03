@@ -5,6 +5,7 @@ import AppKit
 @Suite("ImageExporter Tests")
 struct ImageExporterTests {
 
+    @MainActor
     private func makeTestImage(width: Int, height: Int) -> NSImage {
         let image = NSImage(size: NSSize(width: width, height: height))
         image.lockFocus()
@@ -31,7 +32,7 @@ struct ImageExporterTests {
         #expect(result == true || result == false)
     }
 
-    @Test("Export PNG creates file")
+    @MainActor @Test("Export PNG creates file")
     func exportPNG() throws {
         let image = makeTestImage(width: 100, height: 100)
         let url = tempURL(ext: "png")
@@ -41,7 +42,7 @@ struct ImageExporterTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
-    @Test("Export JPEG creates file")
+    @MainActor @Test("Export JPEG creates file")
     func exportJPEG() throws {
         let image = makeTestImage(width: 100, height: 100)
         let url = tempURL(ext: "jpg")
@@ -51,7 +52,7 @@ struct ImageExporterTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
-    @Test("Export TIFF creates file")
+    @MainActor @Test("Export TIFF creates file")
     func exportTIFF() throws {
         let image = makeTestImage(width: 100, height: 100)
         let url = tempURL(ext: "tiff")
@@ -61,7 +62,7 @@ struct ImageExporterTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
-    @Test("Export HEIC creates file if supported")
+    @MainActor @Test("Export HEIC creates file if supported")
     func exportHEIC() throws {
         guard ImageExporter.isHEICSupported else {
             return // Skip on systems without HEIC support
@@ -74,7 +75,7 @@ struct ImageExporterTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
-    @Test("Export with 1x1 image works")
+    @MainActor @Test("Export with 1x1 image works")
     func exportSmallImage() throws {
         let image = makeTestImage(width: 1, height: 1)
         let url = tempURL(ext: "png")

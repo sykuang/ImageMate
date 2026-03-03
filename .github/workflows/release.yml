@@ -78,10 +78,16 @@ jobs:
 
       - name: Create DMG
         run: |
-          # Point script at the exported app
           mkdir -p build/Build/Products/Release
           cp -R build/Export/ImageMate.app build/Build/Products/Release/
-          bash scripts/create-dmg.sh
+          
+          # Create DMG with Applications symlink for drag-to-install
+          DMG_CONTENTS=$(mktemp -d)
+          cp -R build/Build/Products/Release/ImageMate.app "$DMG_CONTENTS/"
+          ln -s /Applications "$DMG_CONTENTS/Applications"
+          hdiutil create -volname ImageMate -srcfolder "$DMG_CONTENTS" \
+            -ov -format UDZO ImageMate.dmg
+          rm -rf "$DMG_CONTENTS"
 
       - name: Notarize DMG
         env:

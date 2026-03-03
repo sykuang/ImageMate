@@ -24,8 +24,15 @@ final class ImageMateUITests: XCTestCase {
     }
     
     func testOpenMenuItemExists() throws {
-        // Check File menu contains Open
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.exists, "Menu bar should exist")
+        
+        let fileMenuItem = menuBar.menuBarItems["File"]
+        XCTAssertTrue(fileMenuItem.exists, "File menu should exist in the menu bar")
+        
+        fileMenuItem.click()
+        
+        let openMenuItem = fileMenuItem.menus.menuItems["Open Images or Folder..."]
+        XCTAssertTrue(openMenuItem.exists, "File menu should contain 'Open Images or Folder...' item")
     }
 }
