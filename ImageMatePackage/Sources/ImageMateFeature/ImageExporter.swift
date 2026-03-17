@@ -16,6 +16,7 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
     case jpeg
     case png
     case tiff
+    case gif
 
     public var id: String { rawValue }
 
@@ -25,6 +26,7 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .jpeg: "JPEG"
         case .png:  "PNG"
         case .tiff: "TIFF"
+        case .gif:  "GIF"
         }
     }
 
@@ -34,6 +36,7 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .jpeg: "jpg"
         case .png:  "png"
         case .tiff: "tiff"
+        case .gif:  "gif"
         }
     }
 
@@ -43,6 +46,7 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .jpeg: .jpeg
         case .png:  .png
         case .tiff: .tiff
+        case .gif:  .gif
         }
     }
 }
@@ -108,8 +112,8 @@ public struct ImageExporter {
         switch format {
         case .heic, .jpeg:
             options[kCGImageDestinationLossyCompressionQuality] = quality
-        case .png, .tiff:
-            break // lossless – no quality knob needed
+        case .png, .tiff, .gif:
+            break // lossless / palette-based – no quality knob needed
         }
 
         CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
