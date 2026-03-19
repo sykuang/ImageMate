@@ -14,6 +14,9 @@ public class ImageViewModel: ObservableObject {
     @Published public var currentImage: NSImage?
     @Published public var currentIndex: Int = 0
     @Published public var imageUrls: [URL] = []
+    /// Set when directory scan fails for a single-file open — the UI
+    /// should prompt the user to grant access to this directory.
+    @Published public var pendingDirectoryAccess: URL?
     
     private var accessingDirectories: Set<URL> = []
     
@@ -123,6 +126,8 @@ public class ImageViewModel: ObservableObject {
             } catch {
                 Logger.imageOperations.error("Failed to scan directory '\(directory.path)': \(error.localizedDescription)")
                 Logger.imageOperations.error("Directory scan error details: \(error)")
+                // Signal the UI to prompt the user for folder access
+                self.pendingDirectoryAccess = directory
             }
         }
         
@@ -154,6 +159,16 @@ public class ImageViewModel: ObservableObject {
         }
         
         loadCurrentImage()
+    }
+    
+    /// Re-scan the directory after the user grants folder access.
+    /// Called from the UI after NSOpenPanel or bookmark restore succeeds.
+    public func rescanDirectory(_ directory: URL) {
+        pendingDirectoryAccess = nil
+        grantDirectoryAccess(directory)
+        
+        guard let currentUrl = imageUrls.first else { return }
+        loadImages(from: [currentUrl], grantedDirectory: directory)
     }
     
     public func selectImage(at index: Int) {

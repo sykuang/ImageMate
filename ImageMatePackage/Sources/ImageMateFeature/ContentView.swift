@@ -566,9 +566,25 @@ public struct ContentView: View {
                 Logger.imageOperations.info("🖼️ Processing as single image file")
                 let parentDir = url.deletingLastPathComponent()
                 Logger.imageOperations.info("📂 Parent directory: \(parentDir.path)")
-                _ = parentDir.startAccessingSecurityScopedResource()
-                imageViewModel.grantDirectoryAccess(parentDir)
-                imageViewModel.loadImages(from: [url], grantedDirectory: parentDir)
+
+                // Try restoring a saved bookmark for this directory first
+                if let bookmarkedURL = BookmarkManager.shared.restoreBookmark(for: parentDir.path) {
+                    Logger.imageOperations.info("📖 Restored bookmark for parent directory")
+                    imageViewModel.grantDirectoryAccess(bookmarkedURL)
+                    imageViewModel.loadImages(from: [url], grantedDirectory: bookmarkedURL)
+                } else {
+                    _ = parentDir.startAccessingSecurityScopedResource()
+                    imageViewModel.grantDirectoryAccess(parentDir)
+                    imageViewModel.loadImages(from: [url], grantedDirectory: parentDir)
+                }
+
+                // If directory scan failed (sandbox blocked it), prompt the user
+                // synchronously — this fires before the view even renders.
+                if let blockedDir = imageViewModel.pendingDirectoryAccess {
+                    Logger.imageOperations.info("🔒 Directory scan was blocked, prompting for access")
+                    promptForDirectoryAccess(blockedDir)
+                }
+
                 resetZoom()
                 resizeWindowToFitImage()
                 Logger.imageOperations.info("✅ Image loaded successfully")
@@ -576,6 +592,34 @@ public struct ContentView: View {
         } else {
             Logger.imageOperations.error("❌ File does not exist at path: \(url.path)")
         }
+    }
+    
+    /// When the sandbox blocks directory scanning, try a saved bookmark or
+    /// prompt the user once with NSOpenPanel. The grant is saved so subsequent
+    /// opens of files in the same folder succeed silently.
+    private func promptForDirectoryAccess(_ directory: URL) {
+        // 1. Already tried bookmark in handleFinderOpen, so go straight to prompt.
+        Logger.imageOperations.info("📂 Prompting user for access to: \(directory.path)")
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = directory
+        panel.message = "ImageMate needs access to this folder to show thumbnails of nearby images."
+        panel.prompt = "Grant Access"
+
+        guard panel.runModal() == .OK, let grantedURL = panel.url else {
+            Logger.imageOperations.info("User cancelled folder access prompt")
+            return
+        }
+
+        _ = grantedURL.startAccessingSecurityScopedResource()
+        BookmarkManager.shared.saveBookmark(for: grantedURL)
+        imageViewModel.rescanDirectory(grantedURL)
+        resetZoom()
+        resizeWindowToFitImage()
+        Logger.imageOperations.info("✅ Folder access granted and images rescanned")
     }
     
     private func zoomIn() {
@@ -708,11 +752,23 @@ public struct ContentView: View {
                 var grantedDir: URL?
                 if let firstUrl = urls.first {
                     let parentDir = firstUrl.deletingLastPathComponent()
-                    _ = parentDir.startAccessingSecurityScopedResource()
-                    self.imageViewModel.grantDirectoryAccess(parentDir)
-                    grantedDir = parentDir
+                    // Try a saved bookmark first
+                    if let bookmarkedURL = BookmarkManager.shared.restoreBookmark(for: parentDir.path) {
+                        self.imageViewModel.grantDirectoryAccess(bookmarkedURL)
+                        grantedDir = bookmarkedURL
+                    } else {
+                        _ = parentDir.startAccessingSecurityScopedResource()
+                        self.imageViewModel.grantDirectoryAccess(parentDir)
+                        grantedDir = parentDir
+                    }
                 }
                 self.imageViewModel.loadImages(from: urls, grantedDirectory: grantedDir)
+
+                // If directory scan failed, prompt for access
+                if let blockedDir = self.imageViewModel.pendingDirectoryAccess {
+                    self.promptForDirectoryAccess(blockedDir)
+                }
+
                 self.resetZoom()
                 self.resizeWindowToFitImage()
                 Logger.imageOperations.info("✅ Dropped images loaded successfully")

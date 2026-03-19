@@ -112,8 +112,11 @@ public actor ThumbnailLoader {
         ]
 
         // Read file data in one sequential pass (avoids multiple SMB round-trips).
-        guard let data = try? Data(contentsOf: url) else {
-            Logger.imageOperations.debug("Failed to read data for \(url.lastPathComponent)")
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            Logger.imageOperations.error("Failed to read data for \(url.lastPathComponent): \(error.localizedDescription)")
             return nil
         }
 
