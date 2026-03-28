@@ -119,6 +119,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if flag && UserDefaults.standard.bool(forKey: "singleWindowMode") {
+            focusMainWindow(sender)
+            return false
+        }
+        return true
+    }
+    
     func application(_ application: NSApplication, open urls: [URL]) {
         logger.info("🎯 AppDelegate: application:open: called with \(urls.count) URLs")
         for url in urls {
@@ -129,6 +137,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             logger.warning("⚠️ No URLs to open")
             return
         }
+        
+        closeDuplicateWindows(application)
         
         logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
         // Post notification with the URL to open
@@ -142,6 +152,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         logger.info("🎯 AppDelegate: openFile: called with filename: \(filename)")
         let url = URL(fileURLWithPath: filename)
+        
+        closeDuplicateWindows(sender)
+        
         NotificationCenter.default.post(
             name: NSNotification.Name("OpenURLFromFinder"),
             object: nil,
@@ -161,6 +174,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         
+        closeDuplicateWindows(sender)
+        
         let url = URL(fileURLWithPath: filename)
         logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
         NotificationCenter.default.post(
@@ -168,5 +183,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             userInfo: ["url": url]
         )
+    }
+    
+    // MARK: - Single Window Mode Helpers
+    
+    private func focusMainWindow(_ application: NSApplication) {
+        let mainWindow = application.windows.first {
+            $0.identifier?.rawValue != "SettingsWindow" && $0.isVisible
+        }
+        mainWindow?.makeKeyAndOrderFront(nil)
+    }
+    
+    private func closeDuplicateWindows(_ application: NSApplication) {
+        guard UserDefaults.standard.bool(forKey: "singleWindowMode") else { return }
+        
+        DispatchQueue.main.async {
+            let mainWindows = application.windows.filter {
+                $0.identifier?.rawValue != "SettingsWindow"
+                    && !$0.identifier.debugDescription.contains("SwiftUI")
+                    && $0.isVisible
+            }
+            guard let first = mainWindows.first else { return }
+            first.makeKeyAndOrderFront(nil)
+            for window in mainWindows.dropFirst() {
+                logger.info("🔒 Single window mode: closing duplicate window")
+                window.close()
+            }
+        }
     }
 }

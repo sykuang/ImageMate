@@ -14,6 +14,10 @@ if [ -z "$APP_PATH" ]; then
         APP_PATH="build/DerivedData/Build/Products/Release/ImageMate.app"
     elif [ -d "build/Build/Products/Release/ImageMate.app" ]; then
         APP_PATH="build/Build/Products/Release/ImageMate.app"
+    elif [ -d "build/DerivedData/Build/Products/Debug/ImageMate.app" ]; then
+        APP_PATH="build/DerivedData/Build/Products/Debug/ImageMate.app"
+    elif [ -d "build/Build/Products/Debug/ImageMate.app" ]; then
+        APP_PATH="build/Build/Products/Debug/ImageMate.app"
     fi
 fi
 DMG_TEMP="ImageMate-temp.dmg"
@@ -22,7 +26,13 @@ DMG_SIZE="10m"
 
 # Check if app exists
 if [ ! -d "$APP_PATH" ]; then
-    echo "❌ Error: $APP_PATH not found. Please build the app first."
+    echo "❌ Error: ImageMate.app not found."
+    echo ""
+    echo "Build the app first with:"
+    echo "  xcodebuild -workspace ImageMate.xcworkspace -scheme ImageMate -configuration Release build CODE_SIGN_IDENTITY=\"-\" -derivedDataPath build/DerivedData"
+    echo ""
+    echo "Or pass the path directly:"
+    echo "  $0 /path/to/ImageMate.app"
     exit 1
 fi
 
