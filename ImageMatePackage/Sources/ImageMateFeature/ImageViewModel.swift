@@ -14,6 +14,9 @@ public class ImageViewModel: ObservableObject {
     @Published public var currentImage: NSImage?
     @Published public var currentIndex: Int = 0
     @Published public var imageUrls: [URL] = []
+    /// Set when directory scan fails for a single-file open — the UI
+    /// should prompt the user to grant access to this directory.
+    @Published public var pendingDirectoryAccess: URL?
     
     private var accessingDirectories: Set<URL> = []
     
@@ -44,12 +47,13 @@ public class ImageViewModel: ObservableObject {
         }
     }
     
-    public func loadImages(from urls: [URL], startingAt startIndex: Int? = nil) {
+    public func loadImages(from urls: [URL], startingAt startIndex: Int? = nil, grantedDirectory: URL? = nil) {
         Logger.imageOperations.info("Loading images from \(urls.count) URLs")
+        
+        let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
         
         // Filter only image files
         var imageUrls = urls.filter { url in
-            let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
             return validExtensions.contains(url.pathExtension.lowercased())
         }
         
@@ -76,11 +80,19 @@ public class ImageViewModel: ObservableObject {
         
         // If only one image is loaded, try to load all images from the same directory
         if imageUrls.count == 1, let firstUrl = imageUrls.first {
-            let directory = firstUrl.deletingLastPathComponent()
-            Logger.imageOperations.debug("Single image detected, scanning directory: \(directory.path)")
+            // Use the pre-granted directory if available, otherwise derive from file URL
+            let directory = grantedDirectory ?? firstUrl.deletingLastPathComponent()
+            Logger.imageOperations.info("Single image detected, scanning directory: \(directory.path)")
             
-            // Start accessing the security-scoped resource
-            let accessing = firstUrl.startAccessingSecurityScopedResource()
+            // Only start security-scoped access on the file if no directory was pre-granted
+            let accessing: Bool
+            if grantedDirectory == nil {
+                accessing = firstUrl.startAccessingSecurityScopedResource()
+                Logger.imageOperations.debug("Security-scoped access on file: \(accessing)")
+            } else {
+                accessing = false
+                Logger.imageOperations.debug("Using pre-granted directory access")
+            }
             defer {
                 if accessing {
                     firstUrl.stopAccessingSecurityScopedResource()
@@ -93,10 +105,9 @@ public class ImageViewModel: ObservableObject {
                     includingPropertiesForKeys: nil,
                     options: [.skipsHiddenFiles]
                 )
-                Logger.imageOperations.debug("Directory contains \(contents.count) total files")
+                Logger.imageOperations.info("Directory contains \(contents.count) total files")
                 
                 let allImages = contents.filter { url in
-                    let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
                     let ext = url.pathExtension.lowercased()
                     let isValid = validExtensions.contains(ext)
                     if !isValid {
@@ -113,7 +124,10 @@ public class ImageViewModel: ObservableObject {
                     Logger.imageOperations.warning("No images found in directory despite scanning")
                 }
             } catch {
-                Logger.imageOperations.error("Failed to scan directory: \(error.localizedDescription)")
+                Logger.imageOperations.error("Failed to scan directory '\(directory.path)': \(error.localizedDescription)")
+                Logger.imageOperations.error("Directory scan error details: \(error)")
+                // Signal the UI to prompt the user for folder access
+                self.pendingDirectoryAccess = directory
             }
         }
         
@@ -128,17 +142,33 @@ public class ImageViewModel: ObservableObject {
             }
         }
         
-        // Find the index of the originally selected image
-        if let firstUrl = urls.first,
-           let index = self.imageUrls.firstIndex(of: firstUrl) {
-            self.currentIndex = index
-            Logger.imageOperations.info("Set current index to \(index) for \(firstUrl.lastPathComponent)")
+        // Find the index of the originally selected image (compare by lastPathComponent
+        // to handle URL normalization differences between Finder and FileManager)
+        if let firstUrl = urls.first {
+            let targetName = firstUrl.lastPathComponent
+            if let index = self.imageUrls.firstIndex(where: { $0.lastPathComponent == targetName }) {
+                self.currentIndex = index
+                Logger.imageOperations.info("Set current index to \(index) for \(targetName)")
+            } else {
+                self.currentIndex = 0
+                Logger.imageOperations.info("Could not find \(targetName) in list, set current index to 0")
+            }
         } else {
             self.currentIndex = 0
             Logger.imageOperations.info("Set current index to 0")
         }
         
         loadCurrentImage()
+    }
+    
+    /// Re-scan the directory after the user grants folder access.
+    /// Called from the UI after NSOpenPanel or bookmark restore succeeds.
+    public func rescanDirectory(_ directory: URL) {
+        pendingDirectoryAccess = nil
+        grantDirectoryAccess(directory)
+        
+        guard let currentUrl = imageUrls.first else { return }
+        loadImages(from: [currentUrl], grantedDirectory: directory)
     }
     
     public func selectImage(at index: Int) {

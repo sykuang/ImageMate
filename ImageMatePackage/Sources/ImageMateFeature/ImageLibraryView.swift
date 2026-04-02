@@ -133,6 +133,7 @@ struct ImageThumbnailCell: View {
     
     @State private var thumbnail: NSImage?
     @State private var isLoading = true
+    @State private var loadTask: Task<Void, Never>?
     
     var body: some View {
         VStack(spacing: 8) {
@@ -190,25 +191,24 @@ struct ImageThumbnailCell: View {
         .onAppear {
             loadThumbnail()
         }
+        .onDisappear {
+            loadTask?.cancel()
+            loadTask = nil
+        }
     }
     
     private func loadThumbnail() {
-        Task.detached(priority: .userInitiated) {
-            guard let image = NSImage(contentsOf: url) else {
-                await MainActor.run {
-                    isLoading = false
-                }
-                return
-            }
+        // Already loaded
+        guard thumbnail == nil else { return }
+        
+        isLoading = true
+        loadTask = Task {
+            let image = await ThumbnailLoader.shared.thumbnail(for: url)
             
-            // Create thumbnail
-            let thumbSize = NSSize(width: 180, height: 180)
-            let thumb = image.resized(to: thumbSize)
+            guard !Task.isCancelled else { return }
             
-            await MainActor.run {
-                self.thumbnail = thumb
-                self.isLoading = false
-            }
+            thumbnail = image
+            isLoading = false
         }
     }
 }

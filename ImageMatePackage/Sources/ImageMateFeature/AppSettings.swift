@@ -21,6 +21,12 @@ public class AppSettings: ObservableObject {
         }
     }
     
+    @Published public var singleWindowMode: Bool {
+        didSet {
+            UserDefaults.standard.set(singleWindowMode, forKey: "singleWindowMode")
+        }
+    }
+    
     public init() {
         let savedMode = UserDefaults.standard.string(forKey: "thumbnailDisplayMode") ?? ThumbnailDisplayMode.autoHide.rawValue
         self.thumbnailDisplayMode = ThumbnailDisplayMode(rawValue: savedMode) ?? .autoHide
@@ -31,6 +37,13 @@ public class AppSettings: ObservableObject {
             UserDefaults.standard.set(true, forKey: "autoResizeWindow")
         } else {
             self.autoResizeWindow = UserDefaults.standard.bool(forKey: "autoResizeWindow")
+        }
+        
+        if UserDefaults.standard.object(forKey: "singleWindowMode") == nil {
+            self.singleWindowMode = true
+            UserDefaults.standard.set(true, forKey: "singleWindowMode")
+        } else {
+            self.singleWindowMode = UserDefaults.standard.bool(forKey: "singleWindowMode")
         }
     }
 }

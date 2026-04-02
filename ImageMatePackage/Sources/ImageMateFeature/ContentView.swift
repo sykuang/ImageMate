@@ -310,21 +310,32 @@ public struct ContentView: View {
     }
     
     private var thumbnailStripView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(Array(imageViewModel.imageUrls.enumerated()), id: \.offset) { index, url in
-                    ThumbnailView(
-                        url: url,
-                        isSelected: index == imageViewModel.currentIndex
-                    )
-                    .onTapGesture {
-                        imageViewModel.selectImage(at: index)
-                        resetZoom()
-                        resetThumbnailAutoHide()
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(imageViewModel.imageUrls.enumerated()), id: \.offset) { index, url in
+                        ThumbnailView(
+                            url: url,
+                            isSelected: index == imageViewModel.currentIndex
+                        )
+                        .id(index)
+                        .onTapGesture {
+                            imageViewModel.selectImage(at: index)
+                            resetZoom()
+                            resetThumbnailAutoHide()
+                        }
                     }
                 }
+                .padding()
             }
-            .padding()
+            .onChange(of: imageViewModel.currentIndex) { _, newIndex in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    proxy.scrollTo(newIndex, anchor: .center)
+                }
+            }
+            .onAppear {
+                proxy.scrollTo(imageViewModel.currentIndex, anchor: .center)
+            }
         }
         .frame(height: 100)
         .background(.ultraThinMaterial)
@@ -431,7 +442,8 @@ public struct ContentView: View {
                     showingLibrary = true
                 } else {
                     // Load images directly for individual file selection
-                    imageViewModel.loadImages(from: imageUrls)
+                    let grantedDir = directoriesToAccess.first
+                    imageViewModel.loadImages(from: imageUrls, grantedDirectory: grantedDir)
                     resetZoom()
                     resizeWindowToFitImage()
                 }
@@ -492,6 +504,8 @@ public struct ContentView: View {
                 format = .png
             case "tiff", "tif":
                 format = .tiff
+            case "gif":
+                format = .gif
             default:
                 format = .heic
             }
@@ -552,9 +566,25 @@ public struct ContentView: View {
                 Logger.imageOperations.info("🖼️ Processing as single image file")
                 let parentDir = url.deletingLastPathComponent()
                 Logger.imageOperations.info("📂 Parent directory: \(parentDir.path)")
-                _ = parentDir.startAccessingSecurityScopedResource()
-                imageViewModel.grantDirectoryAccess(parentDir)
-                imageViewModel.loadImages(from: [url])
+
+                // Try restoring a saved bookmark for this directory first
+                if let bookmarkedURL = BookmarkManager.shared.restoreBookmark(for: parentDir.path) {
+                    Logger.imageOperations.info("📖 Restored bookmark for parent directory")
+                    imageViewModel.grantDirectoryAccess(bookmarkedURL)
+                    imageViewModel.loadImages(from: [url], grantedDirectory: bookmarkedURL)
+                } else {
+                    _ = parentDir.startAccessingSecurityScopedResource()
+                    imageViewModel.grantDirectoryAccess(parentDir)
+                    imageViewModel.loadImages(from: [url], grantedDirectory: parentDir)
+                }
+
+                // If directory scan failed (sandbox blocked it), prompt the user
+                // synchronously — this fires before the view even renders.
+                if let blockedDir = imageViewModel.pendingDirectoryAccess {
+                    Logger.imageOperations.info("🔒 Directory scan was blocked, prompting for access")
+                    promptForDirectoryAccess(blockedDir)
+                }
+
                 resetZoom()
                 resizeWindowToFitImage()
                 Logger.imageOperations.info("✅ Image loaded successfully")
@@ -562,6 +592,34 @@ public struct ContentView: View {
         } else {
             Logger.imageOperations.error("❌ File does not exist at path: \(url.path)")
         }
+    }
+    
+    /// When the sandbox blocks directory scanning, try a saved bookmark or
+    /// prompt the user once with NSOpenPanel. The grant is saved so subsequent
+    /// opens of files in the same folder succeed silently.
+    private func promptForDirectoryAccess(_ directory: URL) {
+        // 1. Already tried bookmark in handleFinderOpen, so go straight to prompt.
+        Logger.imageOperations.info("📂 Prompting user for access to: \(directory.path)")
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = directory
+        panel.message = "ImageMate needs access to this folder to show thumbnails of nearby images."
+        panel.prompt = "Grant Access"
+
+        guard panel.runModal() == .OK, let grantedURL = panel.url else {
+            Logger.imageOperations.info("User cancelled folder access prompt")
+            return
+        }
+
+        _ = grantedURL.startAccessingSecurityScopedResource()
+        BookmarkManager.shared.saveBookmark(for: grantedURL)
+        imageViewModel.rescanDirectory(grantedURL)
+        resetZoom()
+        resizeWindowToFitImage()
+        Logger.imageOperations.info("✅ Folder access granted and images rescanned")
     }
     
     private func zoomIn() {
@@ -691,12 +749,26 @@ public struct ContentView: View {
             Logger.imageOperations.info("📥 Processing \(urls.count) dropped files")
             if !urls.isEmpty {
                 // Grant directory access for parent folder
+                var grantedDir: URL?
                 if let firstUrl = urls.first {
                     let parentDir = firstUrl.deletingLastPathComponent()
-                    _ = parentDir.startAccessingSecurityScopedResource()
-                    self.imageViewModel.grantDirectoryAccess(parentDir)
+                    // Try a saved bookmark first
+                    if let bookmarkedURL = BookmarkManager.shared.restoreBookmark(for: parentDir.path) {
+                        self.imageViewModel.grantDirectoryAccess(bookmarkedURL)
+                        grantedDir = bookmarkedURL
+                    } else {
+                        _ = parentDir.startAccessingSecurityScopedResource()
+                        self.imageViewModel.grantDirectoryAccess(parentDir)
+                        grantedDir = parentDir
+                    }
                 }
-                self.imageViewModel.loadImages(from: urls)
+                self.imageViewModel.loadImages(from: urls, grantedDirectory: grantedDir)
+
+                // If directory scan failed, prompt for access
+                if let blockedDir = self.imageViewModel.pendingDirectoryAccess {
+                    self.promptForDirectoryAccess(blockedDir)
+                }
+
                 self.resetZoom()
                 self.resizeWindowToFitImage()
                 Logger.imageOperations.info("✅ Dropped images loaded successfully")
@@ -798,6 +870,8 @@ struct ThumbnailView: View {
     let url: URL
     let isSelected: Bool
     @State private var thumbnail: NSImage?
+    @State private var isLoading = true
+    @State private var loadTask: Task<Void, Never>?
     
     var body: some View {
         Group {
@@ -812,27 +886,40 @@ struct ThumbnailView: View {
                             .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 3)
                     )
                     .shadow(radius: 4)
+            } else if isLoading {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 80, height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(ProgressView().controlSize(.small))
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
                     .frame(width: 80, height: 80)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        Image(systemName: "photo")
+                            .foregroundColor(.gray)
+                    )
             }
         }
         .onAppear {
             loadThumbnail()
         }
+        .onDisappear {
+            loadTask?.cancel()
+            loadTask = nil
+        }
     }
     
     private func loadThumbnail() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            if let image = NSImage(contentsOf: url) {
-                let size = CGSize(width: 160, height: 160)
-                let thumbnail = image.resized(to: size)
-                DispatchQueue.main.async {
-                    self.thumbnail = thumbnail
-                }
-            }
+        guard thumbnail == nil else { return }
+        isLoading = true
+        loadTask = Task {
+            let image = await ThumbnailLoader.shared.thumbnail(for: url)
+            guard !Task.isCancelled else { return }
+            thumbnail = image
+            isLoading = false
         }
     }
 }
