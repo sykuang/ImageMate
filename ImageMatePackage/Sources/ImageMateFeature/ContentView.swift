@@ -25,6 +25,7 @@ public struct ContentView: View {
     @State private var mouseMonitor: Any?
     @State private var showExportError = false
     @State private var exportErrorMessage = ""
+    @State private var notificationObservers: [Any] = []
     
     public init(settings: AppSettings = AppSettings()) {
         self.settings = settings
@@ -186,7 +187,7 @@ public struct ContentView: View {
             }
             
             // Listen for menu-triggered open image action
-            NotificationCenter.default.addObserver(
+            let openImageObs = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("OpenImageFromMenu"),
                 object: nil,
                 queue: .main
@@ -197,7 +198,7 @@ public struct ContentView: View {
             }
             
             // Listen for menu-triggered export action
-            NotificationCenter.default.addObserver(
+            let exportImageObs = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("ExportImageFromMenu"),
                 object: nil,
                 queue: .main
@@ -208,7 +209,7 @@ public struct ContentView: View {
             }
             
             // Listen for URL opening from Finder
-            NotificationCenter.default.addObserver(
+            let openURLObs = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("OpenURLFromFinder"),
                 object: nil,
                 queue: .main
@@ -229,6 +230,8 @@ public struct ContentView: View {
                     self.handleFinderOpen(url: url, imageViewModel: imageViewModel)
                 }
             }
+            
+            notificationObservers = [openImageObs, exportImageObs, openURLObs]
         }
         .onDisappear {
             if let monitor = eventMonitor {
@@ -239,9 +242,10 @@ public struct ContentView: View {
                 NSEvent.removeMonitor(monitor)
             }
             
-            NotificationCenter.default.removeObserver(self, name: NSNotification.Name("OpenImageFromMenu"), object: nil)
-            NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ExportImageFromMenu"), object: nil)
-            NotificationCenter.default.removeObserver(self, name: NSNotification.Name("OpenURLFromFinder"), object: nil)
+            for observer in notificationObservers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            notificationObservers.removeAll()
         }
         .onChange(of: imageViewModel.currentIndex) {
             resetThumbnailAutoHide()

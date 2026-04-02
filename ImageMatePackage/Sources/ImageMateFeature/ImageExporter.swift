@@ -17,6 +17,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
     case png
     case tiff
     case gif
+    case webp
+    case bmp
 
     public var id: String { rawValue }
 
@@ -27,6 +29,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .png:  "PNG"
         case .tiff: "TIFF"
         case .gif:  "GIF"
+        case .webp: "WebP"
+        case .bmp:  "BMP"
         }
     }
 
@@ -37,6 +41,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .png:  "png"
         case .tiff: "tiff"
         case .gif:  "gif"
+        case .webp: "webp"
+        case .bmp:  "bmp"
         }
     }
 
@@ -47,6 +53,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .png:  .png
         case .tiff: .tiff
         case .gif:  .gif
+        case .webp: .webP
+        case .bmp:  .bmp
         }
     }
 }
@@ -88,6 +96,10 @@ public struct ImageExporter {
             throw ImageExportError.unsupportedFormat
         }
 
+        if format == .webp && !isWebPSupported {
+            throw ImageExportError.unsupportedFormat
+        }
+
         guard let cgImage = image.cgImage(
             forProposedRect: nil,
             context: nil,
@@ -110,9 +122,9 @@ public struct ImageExporter {
         var options: [CFString: Any] = [:]
 
         switch format {
-        case .heic, .jpeg:
+        case .heic, .jpeg, .webp:
             options[kCGImageDestinationLossyCompressionQuality] = quality
-        case .png, .tiff, .gif:
+        case .png, .tiff, .gif, .bmp:
             break // lossless / palette-based – no quality knob needed
         }
 
@@ -129,5 +141,11 @@ public struct ImageExporter {
     public static var isHEICSupported: Bool {
         let supportedTypes = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
         return supportedTypes.contains(UTType.heic.identifier)
+    }
+
+    /// Returns `true` if the current system supports writing WebP images (macOS 14+).
+    public static var isWebPSupported: Bool {
+        let supportedTypes = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
+        return supportedTypes.contains(UTType.webP.identifier)
     }
 }
