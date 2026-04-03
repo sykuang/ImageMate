@@ -153,13 +153,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         
+        // Store for cold-start: ContentView may not have registered its
+        // observer yet, so the notification would be lost.
+        OpenWithCoordinator.shared.pendingURL = url
+        
         closeDuplicateWindows(application) {
             logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
-            NotificationCenter.default.post(
-                name: NSNotification.Name("OpenURLFromFinder"),
-                object: nil,
-                userInfo: ["url": url]
-            )
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenURLFromFinder"),
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            }
         }
     }
     
@@ -167,12 +173,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         logger.info("🎯 AppDelegate: openFile: called with filename: \(filename)")
         let url = URL(fileURLWithPath: filename)
         
+        OpenWithCoordinator.shared.pendingURL = url
+        
         closeDuplicateWindows(sender) {
-            NotificationCenter.default.post(
-                name: NSNotification.Name("OpenURLFromFinder"),
-                object: nil,
-                userInfo: ["url": url]
-            )
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenURLFromFinder"),
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            }
         }
         return true
     }
@@ -189,13 +199,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         let url = URL(fileURLWithPath: filename)
+        OpenWithCoordinator.shared.pendingURL = url
+        
         closeDuplicateWindows(sender) {
             logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
-            NotificationCenter.default.post(
-                name: NSNotification.Name("OpenURLFromFinder"),
-                object: nil,
-                userInfo: ["url": url]
-            )
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenURLFromFinder"),
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            }
         }
     }
     

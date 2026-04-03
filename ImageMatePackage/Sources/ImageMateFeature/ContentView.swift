@@ -215,6 +215,9 @@ public struct ContentView: View {
                 queue: .main
             ) { [weak imageViewModel] notification in
                 Logger.imageOperations.info("🎯 ContentView: Received OpenURLFromFinder notification")
+                // Clear pending URL — notification arrived, so the observer was registered in time.
+                OpenWithCoordinator.shared.pendingURL = nil
+                
                 guard let userInfo = notification.userInfo,
                       let url = userInfo["url"] as? URL else {
                     Logger.imageOperations.error("❌ No URL in notification userInfo")
@@ -232,6 +235,18 @@ public struct ContentView: View {
             }
             
             notificationObservers = [openImageObs, exportImageObs, openURLObs]
+            
+            // Cold-start recovery: if application(_:open:) fired before we
+            // registered the observer above, the notification was lost.
+            // Pick up the URL the AppDelegate stashed for us.
+            if let pendingURL = OpenWithCoordinator.shared.pendingURL {
+                OpenWithCoordinator.shared.pendingURL = nil
+                Logger.imageOperations.info("🧊 Cold-start: recovering pending URL: \(pendingURL.path)")
+                let vm = imageViewModel
+                Task { @MainActor in
+                    self.handleFinderOpen(url: pendingURL, imageViewModel: vm)
+                }
+            }
         }
         .onDisappear {
             if let monitor = eventMonitor {
