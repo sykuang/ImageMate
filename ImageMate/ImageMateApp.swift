@@ -8,8 +8,31 @@
 import SwiftUI
 import ImageMateFeature
 import OSLog
+import AppKit
 
 private let logger = Logger(subsystem: "com.primattek.ImageMate", category: "App")
+
+// Suppress automatic new-window creation from file-open events.
+// macOS + CFBundleDocumentTypes + WindowGroup = new window per file open.
+// File opens are routed exclusively through AppDelegate.application(_:open:).
+private class ImageMateDocumentController: NSDocumentController {
+    override func openDocument(
+        withContentsOf url: URL,
+        display displayDocument: Bool,
+        completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void
+    ) {
+        completionHandler(nil, false, nil)
+    }
+
+    override func reopenDocument(
+        for urlOrNil: URL?,
+        withContentsOf contentsURL: URL,
+        display displayDocument: Bool,
+        completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void
+    ) {
+        completionHandler(nil, false, nil)
+    }
+}
 
 @main
 struct ImageMateApp: App {
@@ -23,10 +46,6 @@ struct ImageMateApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(settings: settings)
-                .onOpenURL { url in
-                    logger.info("📥 onOpenURL called with: \(url.path)")
-                    handleOpenURL(url)
-                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)
@@ -66,16 +85,6 @@ struct ImageMateApp: App {
         NotificationCenter.default.post(name: NSNotification.Name("ExportImageFromMenu"), object: nil)
     }
     
-    private func handleOpenURL(_ url: URL) {
-        logger.info("🔗 handleOpenURL called with: \(url.path)")
-        // Post notification with the URL to open
-        NotificationCenter.default.post(
-            name: NSNotification.Name("OpenURLFromFinder"),
-            object: nil,
-            userInfo: ["url": url]
-        )
-    }
-    
     private func openSettings() {
         // Check if settings window already exists
         let settingsWindow = NSApplication.shared.windows.first { window in
@@ -108,6 +117,12 @@ struct ImageMateApp: App {
 // AppDelegate to handle file/folder opening from Finder
 class AppDelegate: NSObject, NSApplicationDelegate {
     
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Must register before the default NSDocumentController is created
+        _ = ImageMateDocumentController()
+        logger.info("📋 Registered custom document controller to suppress auto window creation")
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("✅ AppDelegate: Application did finish launching")
         logger.info("📋 Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
@@ -133,33 +148,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("   📄 URL: \(url.path)")
         }
         
-        guard let url = urls.first else {
+        guard !urls.isEmpty else {
             logger.warning("⚠️ No URLs to open")
             return
         }
         
-        closeDuplicateWindows(application)
+        // Store first URL for cold-start recovery (ContentView may not have
+        // registered its observer yet).
+        OpenWithCoordinator.shared.pendingURL = urls.first
         
-        logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
-        // Post notification with the URL to open
-        NotificationCenter.default.post(
-            name: NSNotification.Name("OpenURLFromFinder"),
-            object: nil,
-            userInfo: ["url": url]
-        )
+        closeDuplicateWindows(application) {
+            logger.info("📨 Posting OpenURLFromFinder notification for \(urls.count) URL(s)")
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenURLFromFinder"),
+                    object: nil,
+                    userInfo: ["url": urls[0], "urls": urls]
+                )
+            }
+        }
     }
     
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         logger.info("🎯 AppDelegate: openFile: called with filename: \(filename)")
         let url = URL(fileURLWithPath: filename)
         
-        closeDuplicateWindows(sender)
+        OpenWithCoordinator.shared.pendingURL = url
         
-        NotificationCenter.default.post(
-            name: NSNotification.Name("OpenURLFromFinder"),
-            object: nil,
-            userInfo: ["url": url]
-        )
+        closeDuplicateWindows(sender) {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenURLFromFinder"),
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            }
+        }
         return true
     }
     
@@ -169,20 +193,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("   📄 File: \(filename)")
         }
         
-        guard let filename = filenames.first else {
+        guard !filenames.isEmpty else {
             logger.warning("⚠️ No files to open")
             return
         }
         
-        closeDuplicateWindows(sender)
+        let urls = filenames.map { URL(fileURLWithPath: $0) }
+        OpenWithCoordinator.shared.pendingURL = urls.first
         
-        let url = URL(fileURLWithPath: filename)
-        logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
-        NotificationCenter.default.post(
-            name: NSNotification.Name("OpenURLFromFinder"),
-            object: nil,
-            userInfo: ["url": url]
-        )
+        closeDuplicateWindows(sender) {
+            logger.info("📨 Posting OpenURLFromFinder notification for \(urls.count) URL(s)")
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenURLFromFinder"),
+                    object: nil,
+                    userInfo: ["url": urls[0], "urls": urls]
+                )
+            }
+        }
     }
     
     // MARK: - Single Window Mode Helpers
@@ -194,21 +222,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow?.makeKeyAndOrderFront(nil)
     }
     
-    private func closeDuplicateWindows(_ application: NSApplication) {
-        guard UserDefaults.standard.bool(forKey: "singleWindowMode") else { return }
+    private func closeDuplicateWindows(_ application: NSApplication, completion: @escaping () -> Void) {
+        guard UserDefaults.standard.bool(forKey: "singleWindowMode") else {
+            completion()
+            return
+        }
         
         DispatchQueue.main.async {
-            let mainWindows = application.windows.filter {
-                $0.identifier?.rawValue != "SettingsWindow"
-                    && !$0.identifier.debugDescription.contains("SwiftUI")
-                    && $0.isVisible
+            let contentWindows = application.windows.filter { window in
+                window.isVisible
+                    && window.identifier?.rawValue != "SettingsWindow"
+                    && !(window is NSPanel)
             }
-            guard let first = mainWindows.first else { return }
-            first.makeKeyAndOrderFront(nil)
-            for window in mainWindows.dropFirst() {
-                logger.info("🔒 Single window mode: closing duplicate window")
-                window.close()
+            if let first = contentWindows.first {
+                first.makeKeyAndOrderFront(nil)
+                for window in contentWindows.dropFirst() {
+                    logger.info("🔒 Single window mode: closing duplicate window")
+                    window.close()
+                }
             }
+            completion()
         }
     }
 }

@@ -17,6 +17,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
     case png
     case tiff
     case gif
+    case webp
+    case bmp
 
     public var id: String { rawValue }
 
@@ -27,6 +29,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .png:  "PNG"
         case .tiff: "TIFF"
         case .gif:  "GIF"
+        case .webp: "WebP"
+        case .bmp:  "BMP"
         }
     }
 
@@ -37,6 +41,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .png:  "png"
         case .tiff: "tiff"
         case .gif:  "gif"
+        case .webp: "webp"
+        case .bmp:  "bmp"
         }
     }
 
@@ -47,6 +53,8 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .png:  .png
         case .tiff: .tiff
         case .gif:  .gif
+        case .webp: .webP
+        case .bmp:  .bmp
         }
     }
 }
@@ -74,8 +82,8 @@ public struct ImageExporter {
 
     /// Export `image` to `url` in the given `format`.
     ///
-    /// For HEIC, `quality` controls lossy compression (0.0–1.0, default 0.85).
-    /// For PNG / TIFF, `quality` is ignored.
+    /// For HEIC, JPEG, and WebP, `quality` controls lossy compression (0.0–1.0, default 0.85).
+    /// For PNG, TIFF, GIF, and BMP, `quality` is ignored (lossless / palette-based).
     public static func export(
         _ image: NSImage,
         to url: URL,
@@ -85,6 +93,10 @@ public struct ImageExporter {
         Logger.imageOperations.info("Exporting image as \(format.displayName) to \(url.path)")
 
         if format == .heic && !isHEICSupported {
+            throw ImageExportError.unsupportedFormat
+        }
+
+        if format == .webp && !isWebPSupported {
             throw ImageExportError.unsupportedFormat
         }
 
@@ -110,9 +122,9 @@ public struct ImageExporter {
         var options: [CFString: Any] = [:]
 
         switch format {
-        case .heic, .jpeg:
+        case .heic, .jpeg, .webp:
             options[kCGImageDestinationLossyCompressionQuality] = quality
-        case .png, .tiff, .gif:
+        case .png, .tiff, .gif, .bmp:
             break // lossless / palette-based – no quality knob needed
         }
 
@@ -129,5 +141,11 @@ public struct ImageExporter {
     public static var isHEICSupported: Bool {
         let supportedTypes = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
         return supportedTypes.contains(UTType.heic.identifier)
+    }
+
+    /// Returns `true` if the current system supports writing WebP images (macOS 14+).
+    public static var isWebPSupported: Bool {
+        let supportedTypes = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
+        return supportedTypes.contains(UTType.webP.identifier)
     }
 }

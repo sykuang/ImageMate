@@ -63,3 +63,13 @@ fastlane/test_output
 
 build/*
 .DS_Store
+
+# Build artifacts
+*.dmg
+*.pkg
+
+# IDE config
+.vscode/
+
+# Unused root-level entitlements (build uses Config/ImageMate.entitlements)
+/ImageMate.entitlements
