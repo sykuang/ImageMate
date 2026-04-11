@@ -67,6 +67,63 @@ struct ThumbnailView: View {
     }
 }
 
+// MARK: - Frame Thumbnail View (APNG frame mode)
+
+struct FrameThumbnailView: View {
+    let frameSource: APNGFrameSource
+    let frameIndex: Int
+    let isSelected: Bool
+    @State private var thumbnail: NSImage?
+    @State private var loadTask: Task<Void, Never>?
+
+    var body: some View {
+        Group {
+            if let thumbnail = thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 80, height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 3)
+                    )
+                    .shadow(radius: 4)
+                    .overlay(alignment: .bottom) {
+                        Text("\(frameIndex + 1)")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(4)
+                            .padding(.bottom, 4)
+                    }
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 80, height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(ProgressView().controlSize(.small))
+            }
+        }
+        .onAppear { loadThumbnail() }
+        .onDisappear { loadTask?.cancel(); loadTask = nil }
+    }
+
+    private func loadThumbnail() {
+        guard thumbnail == nil else { return }
+        let source = frameSource
+        let index = frameIndex
+        loadTask = Task.detached(priority: .utility) {
+            let image = source.thumbnail(at: index)
+            await MainActor.run {
+                self.thumbnail = image
+            }
+        }
+    }
+}
+
 // MARK: - Image Info View
 
 struct ImageInfoView: View {

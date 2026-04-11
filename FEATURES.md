@@ -23,6 +23,11 @@ The app provides standard macOS menu items:
   - **PNG** - Lossless with transparency
   - **TIFF** - Lossless, high quality
 
+### Edit Menu
+- **Copy** (`⌘C`) - Copy the current image to clipboard:
+  - Copies the **file reference** (paste into Finder to duplicate the file)
+  - Copies the **image data** (paste into Preview, Photoshop, etc.)
+
 ### ImageMate Menu
 - **Settings...** (`⌘,`) - Opens the settings window
 - Standard About, Hide, Quit commands
@@ -115,6 +120,7 @@ View detailed image information with the info panel:
 
 - `←` Previous image
 - `→` Next image
+- `⌘C` Copy current image (file + bitmap data to clipboard)
 - `ESC` Close info panel (if open) or reset zoom
 - `⌘⇧S` Export current image as HEIC/JPEG/PNG/TIFF
 - `⌘O` Open image (file picker)

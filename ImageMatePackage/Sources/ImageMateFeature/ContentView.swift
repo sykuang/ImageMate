@@ -41,9 +41,11 @@ public struct ContentView: View {
                 VStack(spacing: 0) {
                     // Main image viewer
                     GeometryReader { geometry in
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
+                        AnimatedImageView(image: image)
+                            .aspectRatio(
+                                image.size.width / image.size.height,
+                                contentMode: .fit
+                            )
                             .scaleEffect(scale)
                             .offset(offset)
                             .gesture(dragGesture)
@@ -64,9 +66,9 @@ public struct ContentView: View {
                 // Top toolbar (overlay)
                 VStack {
                     HStack {
-                        // File info
-                        if let fileName = imageViewModel.currentFileName {
-                            Text(fileName)
+                        // File / frame title
+                        if let title = imageViewModel.currentDisplayTitle {
+                            Text(title)
                                 .font(.headline)
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 12)
@@ -76,6 +78,27 @@ public struct ContentView: View {
                         }
                         
                         Spacer()
+
+                        // APNG frame mode toggle
+                        if imageViewModel.isCurrentImageAPNG || imageViewModel.isFrameMode {
+                            Button(action: {
+                                if imageViewModel.isFrameMode {
+                                    imageViewModel.exitFrameMode()
+                                } else {
+                                    imageViewModel.enterFrameMode()
+                                }
+                                resetZoom()
+                            }) {
+                                Image(systemName: imageViewModel.isFrameMode ? "play.circle" : "square.stack.3d.up")
+                                    .foregroundColor(.white)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(8)
+                            .help(imageViewModel.isFrameMode ? "Play Animation" : "Browse Frames")
+                        }
                         
                         // Zoom controls
                         HStack(spacing: 8) {
@@ -197,6 +220,17 @@ public struct ContentView: View {
                 }
             }
             
+            // Listen for menu-triggered copy action
+            let copyImageObs = NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("CopyImageFromMenu"),
+                object: nil,
+                queue: .main
+            ) { _ in
+                Task { @MainActor in
+                    copyCurrentImage()
+                }
+            }
+            
             // Listen for menu-triggered export action
             let exportImageObs = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("ExportImageFromMenu"),
@@ -234,7 +268,7 @@ public struct ContentView: View {
                 }
             }
             
-            notificationObservers = [openImageObs, exportImageObs, openURLObs]
+            notificationObservers = [openImageObs, copyImageObs, exportImageObs, openURLObs]
             
             // Cold-start recovery: if application(_:open:) fired before we
             // registered the observer above, the notification was lost.
@@ -275,6 +309,18 @@ public struct ContentView: View {
             if imageViewModel.currentImage != nil {
                 resizeWindowToFitImage()
             }
+        }
+        .onChange(of: imageViewModel.isCurrentImageAPNG) {
+            // Auto-enter frame mode if settings say so
+            if imageViewModel.isCurrentImageAPNG,
+               !imageViewModel.isFrameMode,
+               settings.apngDefaultMode == .frames {
+                imageViewModel.enterFrameMode()
+            }
+        }
+        .onChange(of: imageViewModel.isFrameMode) {
+            resetThumbnailAutoHide()
+            resizeWindowToFitImage()
         }
         .onChange(of: settings.autoResizeWindow) {
             if settings.autoResizeWindow {
@@ -318,7 +364,10 @@ public struct ContentView: View {
         .frame(minWidth: 800, minHeight: 600)
     }
     private var shouldShowThumbnails: Bool {
-        guard imageViewModel.imageUrls.count > 1 else { return false }
+        let itemCount = imageViewModel.isFrameMode
+            ? imageViewModel.displayItemCount
+            : imageViewModel.imageUrls.count
+        guard itemCount > 1 else { return false }
         
         switch settings.thumbnailDisplayMode {
         case .alwaysShow:
@@ -332,16 +381,32 @@ public struct ContentView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(Array(imageViewModel.imageUrls.enumerated()), id: \.offset) { index, url in
-                        ThumbnailView(
-                            url: url,
-                            isSelected: index == imageViewModel.currentIndex
-                        )
-                        .id(index)
-                        .onTapGesture {
-                            imageViewModel.selectImage(at: index)
-                            resetZoom()
-                            resetThumbnailAutoHide()
+                    if imageViewModel.isFrameMode, let source = imageViewModel.frameSource {
+                        ForEach(0..<source.frameCount, id: \.self) { index in
+                            FrameThumbnailView(
+                                frameSource: source,
+                                frameIndex: index,
+                                isSelected: index == imageViewModel.currentIndex
+                            )
+                            .id(index)
+                            .onTapGesture {
+                                imageViewModel.selectImage(at: index)
+                                resetZoom()
+                                resetThumbnailAutoHide()
+                            }
+                        }
+                    } else {
+                        ForEach(Array(imageViewModel.imageUrls.enumerated()), id: \.offset) { index, url in
+                            ThumbnailView(
+                                url: url,
+                                isSelected: index == imageViewModel.currentIndex
+                            )
+                            .id(index)
+                            .onTapGesture {
+                                imageViewModel.selectImage(at: index)
+                                resetZoom()
+                                resetThumbnailAutoHide()
+                            }
                         }
                     }
                 }
@@ -473,8 +538,33 @@ public struct ContentView: View {
     }
     
     private func isImageFile(_ url: URL) -> Bool {
-        let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
+        let imageExtensions = ["jpg", "jpeg", "png", "apng", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
         return imageExtensions.contains(url.pathExtension.lowercased())
+    }
+    
+    // MARK: - Copy
+    
+    public func copyCurrentImage() {
+        guard let image = imageViewModel.currentImage else {
+            Logger.imageOperations.warning("No image to copy")
+            return
+        }
+        
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        var items: [NSPasteboardWriting] = []
+        
+        // Add file URL so Finder/other apps can paste the file
+        if let fileUrl = imageViewModel.currentFileUrl {
+            items.append(fileUrl as NSURL)
+        }
+        
+        // Add image data for bitmap paste into editors
+        items.append(image)
+        
+        pasteboard.writeObjects(items)
+        Logger.imageOperations.info("📋 Copied image to clipboard (file + bitmap)")
     }
     
     // MARK: - Export
@@ -673,7 +763,7 @@ public struct ContentView: View {
         let maxHeight = visibleFrame.height * 0.9
         
         // Account for thumbnail height if always showing
-        let thumbnailHeight: CGFloat = (imageViewModel.imageUrls.count > 1 && settings.thumbnailDisplayMode == .alwaysShow) ? 120 : 0
+        let thumbnailHeight: CGFloat = (imageViewModel.displayItemCount > 1 && settings.thumbnailDisplayMode == .alwaysShow) ? 120 : 0
         let toolbarHeight: CGFloat = 80 // Approximate height for top toolbar
         let availableHeight = maxHeight - thumbnailHeight - toolbarHeight
         
@@ -813,12 +903,13 @@ public struct ContentView: View {
         case 53: // Escape
             Logger.ui.info("Escape pressed")
             if showingImageInfo {
-                // Close info panel first if it's open
                 withAnimation {
                     showingImageInfo = false
                 }
+            } else if imageViewModel.isFrameMode {
+                imageViewModel.exitFrameMode()
+                resetZoom()
             } else {
-                // Otherwise reset zoom
                 resetZoom()
             }
         default:
@@ -855,7 +946,7 @@ public struct ContentView: View {
     private func handleMouseMove(event: NSEvent) {
         // Only track mouse for auto-hide mode
         guard settings.thumbnailDisplayMode == .autoHide,
-              imageViewModel.imageUrls.count > 1 else {
+              imageViewModel.displayItemCount > 1 else {
             return
         }
         

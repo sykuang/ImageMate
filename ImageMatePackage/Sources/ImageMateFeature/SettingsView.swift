@@ -104,6 +104,46 @@ public struct SettingsView: View {
             Divider()
             
             VStack(alignment: .leading, spacing: 16) {
+                Text("APNG Behavior")
+                    .font(.headline)
+                
+                ForEach(APNGDisplayMode.allCases) { mode in
+                    HStack {
+                        Button(action: {
+                            settings.apngDefaultMode = mode
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: settings.apngDefaultMode == mode ? "circle.inset.filled" : "circle")
+                                    .foregroundColor(settings.apngDefaultMode == mode ? .blue : .secondary)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(mode.displayName)
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    
+                                    Text(mode.description)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(settings.apngDefaultMode == mode ? Color.blue.opacity(0.1) : Color.clear)
+                    )
+                }
+            }
+            .padding()
+            
+            Divider()
+            
+            VStack(alignment: .leading, spacing: 16) {
                 Text("Default Application")
                     .font(.headline)
                 
@@ -137,7 +177,7 @@ public struct SettingsView: View {
             
             Spacer()
         }
-        .frame(width: 450, height: 520)
+        .frame(width: 450, height: 700)
         .padding()
         .onAppear {
             isDefaultViewer = checkIsDefaultViewer()
