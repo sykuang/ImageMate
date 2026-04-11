@@ -82,8 +82,8 @@ public struct ImageExporter {
 
     /// Export `image` to `url` in the given `format`.
     ///
-    /// For HEIC, `quality` controls lossy compression (0.0–1.0, default 0.85).
-    /// For PNG / TIFF, `quality` is ignored.
+    /// For HEIC, JPEG, and WebP, `quality` controls lossy compression (0.0–1.0, default 0.85).
+    /// For PNG, TIFF, GIF, and BMP, `quality` is ignored (lossless / palette-based).
     public static func export(
         _ image: NSImage,
         to url: URL,

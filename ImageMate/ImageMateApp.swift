@@ -148,22 +148,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("   📄 URL: \(url.path)")
         }
         
-        guard let url = urls.first else {
+        guard !urls.isEmpty else {
             logger.warning("⚠️ No URLs to open")
             return
         }
         
-        // Store for cold-start: ContentView may not have registered its
-        // observer yet, so the notification would be lost.
-        OpenWithCoordinator.shared.pendingURL = url
+        // Store first URL for cold-start recovery (ContentView may not have
+        // registered its observer yet).
+        OpenWithCoordinator.shared.pendingURL = urls.first
         
         closeDuplicateWindows(application) {
-            logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
+            logger.info("📨 Posting OpenURLFromFinder notification for \(urls.count) URL(s)")
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
                     name: NSNotification.Name("OpenURLFromFinder"),
                     object: nil,
-                    userInfo: ["url": url]
+                    userInfo: ["url": urls[0], "urls": urls]
                 )
             }
         }
@@ -193,21 +193,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("   📄 File: \(filename)")
         }
         
-        guard let filename = filenames.first else {
+        guard !filenames.isEmpty else {
             logger.warning("⚠️ No files to open")
             return
         }
         
-        let url = URL(fileURLWithPath: filename)
-        OpenWithCoordinator.shared.pendingURL = url
+        let urls = filenames.map { URL(fileURLWithPath: $0) }
+        OpenWithCoordinator.shared.pendingURL = urls.first
         
         closeDuplicateWindows(sender) {
-            logger.info("📨 Posting OpenURLFromFinder notification for: \(url.path)")
+            logger.info("📨 Posting OpenURLFromFinder notification for \(urls.count) URL(s)")
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
                     name: NSNotification.Name("OpenURLFromFinder"),
                     object: nil,
-                    userInfo: ["url": url]
+                    userInfo: ["url": urls[0], "urls": urls]
                 )
             }
         }
