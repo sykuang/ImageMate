@@ -88,7 +88,7 @@ public class ImageViewModel: ObservableObject {
         }
         
         if let startIndex = startIndex {
-            self.imageUrls = imageUrls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            self.imageUrls = imageUrls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             Logger.imageOperations.info("Using provided image list with \(self.imageUrls.count) images, starting at index \(startIndex)")
             
             self.currentIndex = min(startIndex, self.imageUrls.count - 1)
@@ -147,7 +147,7 @@ public class ImageViewModel: ObservableObject {
             }
         }
         
-        self.imageUrls = imageUrls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        self.imageUrls = imageUrls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
         Logger.imageOperations.info("Final image list has \(self.imageUrls.count) images")
         
         if self.imageUrls.count <= 10 {

@@ -29,4 +29,35 @@ struct AnimatedImageView: NSViewRepresentable {
             nsView.image = image
         }
     }
+
+    /// Tell SwiftUI the correct size so `.aspectRatio(contentMode: .fit)`
+    /// can properly constrain this NSViewRepresentable.
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        nsView: NSImageView,
+        context: Context
+    ) -> CGSize? {
+        guard let img = nsView.image else { return nil }
+        let imgW = img.size.width
+        let imgH = img.size.height
+        guard imgW > 0, imgH > 0 else { return nil }
+
+        let aspect = imgW / imgH
+
+        switch (proposal.width, proposal.height) {
+        case let (w?, h?):
+            // Both dimensions proposed — fit within them
+            if w / h > aspect {
+                return CGSize(width: h * aspect, height: h)
+            } else {
+                return CGSize(width: w, height: w / aspect)
+            }
+        case let (w?, nil):
+            return CGSize(width: w, height: w / aspect)
+        case let (nil, h?):
+            return CGSize(width: h * aspect, height: h)
+        case (nil, nil):
+            return CGSize(width: imgW, height: imgH)
+        }
+    }
 }
