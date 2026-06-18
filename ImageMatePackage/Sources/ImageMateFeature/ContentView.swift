@@ -26,6 +26,7 @@ public struct ContentView: View {
     @State private var showExportError = false
     @State private var exportErrorMessage = ""
     @State private var notificationObservers: [NSObjectProtocol] = []
+    @State private var viewportSize: CGSize = .zero
     
     public init(settings: AppSettings = AppSettings()) {
         self.settings = settings
@@ -53,6 +54,11 @@ public struct ContentView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .animation(.spring(response: 0.3), value: scale)
                             .animation(.spring(response: 0.3), value: offset)
+                            .onAppear { viewportSize = geometry.size }
+                            .onChange(of: geometry.size) { _, newSize in
+                                viewportSize = newSize
+                                applyZoomMode()
+                            }
                     }
                     .frame(maxHeight: shouldShowThumbnails && settings.thumbnailDisplayMode == .alwaysShow ? .infinity : nil)
                     
@@ -108,7 +114,7 @@ public struct ContentView: View {
                             }
                             .buttonStyle(.plain)
                             
-                            Text(String(format: "%.0f%%", scale * 100))
+                            Text(zoomPercentageText)
                                 .font(.caption)
                                 .foregroundColor(.white)
                                 .frame(minWidth: 50)
@@ -326,6 +332,10 @@ public struct ContentView: View {
             if settings.autoResizeWindow {
                 resizeWindowToFitImage()
             }
+            resetZoom()
+        }
+        .onChange(of: settings.zoomMode) {
+            resetZoom()
         }
         .onChange(of: settings.thumbnailDisplayMode) {
             if settings.autoResizeWindow {
@@ -374,6 +384,8 @@ public struct ContentView: View {
             return true
         case .autoHide:
             return showThumbnails
+        case .alwaysHide:
+            return false
         }
     }
     
@@ -522,7 +534,7 @@ public struct ContentView: View {
             if !imageUrls.isEmpty {
                 if isFolderSelection {
                     // Show library view for folder selection
-                    libraryImageUrls = imageUrls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+                    libraryImageUrls = imageUrls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
                     showingLibrary = true
                 } else {
                     // Load images directly for individual file selection
@@ -664,7 +676,7 @@ public struct ContentView: View {
                 
                 Logger.imageOperations.info("🖼️ Found \(imageUrls.count) images in folder")
                 if !imageUrls.isEmpty {
-                    libraryImageUrls = imageUrls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+                    libraryImageUrls = imageUrls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
                     showingLibrary = true
                     Logger.imageOperations.info("✅ Showing library view")
                 } else {
@@ -739,10 +751,73 @@ public struct ContentView: View {
         scale = max(scale / 1.2, 0.1)
     }
     
+    /// Display zoom as actual pixel ratio when viewport is known.
+    private var zoomPercentageText: String {
+        guard let image = imageViewModel.currentImage,
+              viewportSize.width > 0, viewportSize.height > 0 else {
+            return String(format: "%.0f%%", scale * 100)
+        }
+        let imgW = image.size.width
+        let imgH = image.size.height
+        guard imgW > 0, imgH > 0 else {
+            return String(format: "%.0f%%", scale * 100)
+        }
+        let fitRatioW = viewportSize.width / imgW
+        let fitRatioH = viewportSize.height / imgH
+        let fitScale = min(fitRatioW, fitRatioH)
+        let actualPercent = fitScale * scale * 100
+        return String(format: "%.0f%%", actualPercent)
+    }
+    
     private func resetZoom() {
-        scale = 1.0
         offset = .zero
         lastOffset = .zero
+        applyZoomMode()
+    }
+    
+    private func applyZoomMode() {
+        guard !settings.autoResizeWindow else {
+            scale = 1.0
+            return
+        }
+        scale = scaleForZoomMode()
+    }
+    
+    /// Compute the scale factor for the current zoom mode.
+    /// The base `.aspectRatio(contentMode: .fit)` already fits the image within
+    /// the viewport, so `scale = 1.0` means "fitted". We compute a multiplier
+    /// on top of that.
+    private func scaleForZoomMode() -> CGFloat {
+        guard let image = imageViewModel.currentImage,
+              viewportSize.width > 0, viewportSize.height > 0 else {
+            return 1.0
+        }
+        
+        let imgW = image.size.width
+        let imgH = image.size.height
+        guard imgW > 0, imgH > 0 else { return 1.0 }
+        
+        switch settings.zoomMode {
+        case .fitToWindow:
+            return 1.0
+            
+        case .fillWindow:
+            // .fit picks the smaller ratio; .fill needs the larger ratio.
+            let fitRatioW = viewportSize.width / imgW
+            let fitRatioH = viewportSize.height / imgH
+            let fitScale = min(fitRatioW, fitRatioH)
+            let fillScale = max(fitRatioW, fitRatioH)
+            guard fitScale > 0 else { return 1.0 }
+            return fillScale / fitScale
+            
+        case .actualSize:
+            // Show at 1:1 pixels. Undo the fit scaling.
+            let fitRatioW = viewportSize.width / imgW
+            let fitRatioH = viewportSize.height / imgH
+            let fitScale = min(fitRatioW, fitRatioH)
+            guard fitScale > 0 else { return 1.0 }
+            return 1.0 / fitScale
+        }
     }
     
     private func resizeWindowToFitImage() {
