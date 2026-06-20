@@ -20,9 +20,8 @@ if [ -z "$APP_PATH" ]; then
         APP_PATH="build/Build/Products/Debug/ImageMate.app"
     fi
 fi
-DMG_TEMP="ImageMate-temp.dmg"
+DMG_TEMP="ImageMate-temp.sparsebundle"
 VOLUME_NAME="ImageMate"
-DMG_SIZE="10m"
 
 # Check if app exists
 if [ ! -d "$APP_PATH" ]; then
@@ -39,11 +38,11 @@ fi
 echo "🔨 Creating installer DMG..."
 
 # Clean up any existing files
-rm -f "$DMG_NAME" "$DMG_TEMP"
+rm -rf "$DMG_NAME" "$DMG_TEMP"
 
 # Create a temporary directory for DMG contents
 DMG_CONTENTS=$(mktemp -d)
-trap "rm -rf $DMG_CONTENTS" EXIT
+trap "rm -rf $DMG_CONTENTS $DMG_TEMP" EXIT
 
 # Copy app to temp directory
 cp -R "$APP_PATH" "$DMG_CONTENTS/"
@@ -51,14 +50,14 @@ cp -R "$APP_PATH" "$DMG_CONTENTS/"
 # Create symbolic link to Applications folder
 ln -s /Applications "$DMG_CONTENTS/Applications"
 
-# Create the DMG
+# Create the DMG (writable sparsebundle for Finder customization)
 echo "📦 Creating DMG volume..."
-hdiutil create -srcfolder "$DMG_CONTENTS" -volname "$VOLUME_NAME" -fs HFS+ \
-    -fsargs "-c c=64,a=16,e=16" -format UDRW -size "$DMG_SIZE" "$DMG_TEMP"
+diskutil image create from "$DMG_CONTENTS" --format UDSB \
+    --volumeName "$VOLUME_NAME" "$DMG_TEMP" >/dev/null
 
 # Mount the DMG
 echo "💿 Mounting DMG..."
-DEVICE=$(hdiutil attach -readwrite -noverify -noautoopen "$DMG_TEMP" | \
+DEVICE=$(diskutil image attach "$DMG_TEMP" | \
     grep -E '^/dev/' | sed 1q | awk '{print $1}')
 MOUNT_POINT="/Volumes/$VOLUME_NAME"
 
@@ -89,14 +88,14 @@ EOF
 
 # Sync and unmount
 sync
-hdiutil detach "$DEVICE" -quiet
+diskutil eject "$DEVICE" >/dev/null
 
 # Convert to compressed DMG
 echo "🗜️ Compressing DMG..."
-hdiutil convert "$DMG_TEMP" -format UDZO -imagekey zlib-level=9 -o "$DMG_NAME"
+diskutil image create from "$DMG_TEMP" --format UDZO "$DMG_NAME" >/dev/null
 
 # Clean up temp DMG
-rm -f "$DMG_TEMP"
+rm -rf "$DMG_TEMP"
 
 # Show result
 echo ""
