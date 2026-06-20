@@ -23,6 +23,11 @@ The app provides standard macOS menu items:
   - **PNG** - Lossless with transparency
   - **TIFF** - Lossless, high quality
 
+### Edit Menu
+- **Copy** (`⌘C`) - Copy the current image to clipboard:
+  - Copies the **file reference** (paste into Finder to duplicate the file)
+  - Copies the **image data** (paste into Preview, Photoshop, etc.)
+
 ### ImageMate Menu
 - **Settings...** (`⌘,`) - Opens the settings window
 - Standard About, Hide, Quit commands
@@ -63,9 +68,14 @@ The settings window includes two sections:
 1. **Thumbnail Display**
    - Always Show (Resize View)
    - Auto Hide (2-second timer)
+   - Always Hide
 
 2. **Window Behavior**
    - Auto-Resize Window toggle
+   - Zoom Mode (when Auto-Resize is OFF):
+     - **Fit to Window** – scale image to fit entirely within the window
+     - **Fill Window** – scale image to fill the window (may crop edges)
+     - **Actual Size** – display image at 1:1 pixel size
 
 Access via: **ImageMate → Settings...** or `⌘,`
 
@@ -75,6 +85,7 @@ Access via: **ImageMate → Settings...** or `⌘,`
 
 - **Always Show**: Thumbnails remain visible, image view is resized
 - **Auto Hide**: Thumbnails automatically hide after 2 seconds of inactivity
+- **Always Hide**: Thumbnails are never shown
 
 ### Image Navigation
 
@@ -98,7 +109,12 @@ Convert any loaded image to a different format:
 - **Pinch Gesture**: Zoom in/out on trackpad
 - **Drag**: Pan around zoomed images
 - **Zoom Controls**: +/- buttons in toolbar
-- **Reset**: Click reset button to return to 100%
+- **Reset**: Click reset button to return to default zoom for current mode
+- **Zoom Percentage**: Shows actual pixel-to-screen ratio (e.g., a 4000px image in an 800px viewport shows ~20%)
+- **Zoom Modes** (when Auto-Resize Window is OFF):
+  - **Fit to Window**: Image scaled to fit entirely (default)
+  - **Fill Window**: Image scaled to fill the window, edges may be cropped
+  - **Actual Size**: 1:1 pixel mapping, use pan to navigate
 
 ### Image Information
 
@@ -115,6 +131,7 @@ View detailed image information with the info panel:
 
 - `←` Previous image
 - `→` Next image
+- `⌘C` Copy current image (file + bitmap data to clipboard)
 - `ESC` Close info panel (if open) or reset zoom
 - `⌘⇧S` Export current image as HEIC/JPEG/PNG/TIFF
 - `⌘O` Open image (file picker)

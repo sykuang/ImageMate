@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import ImageIO
 import OSLog
 
 @MainActor
@@ -17,6 +18,26 @@ public class ImageViewModel: ObservableObject {
     /// Set when directory scan fails for a single-file open — the UI
     /// should prompt the user to grant access to this directory.
     @Published public var pendingDirectoryAccess: URL?
+
+    // MARK: - APNG Frame Mode
+
+    @Published public var isCurrentImageAPNG: Bool = false
+    @Published public var isFrameMode: Bool = false
+    public private(set) var frameSource: APNGFrameSource?
+    private var savedFileIndex: Int?
+
+    /// Number of items visible in the thumbnail strip (frames or files).
+    public var displayItemCount: Int {
+        isFrameMode ? (frameSource?.frameCount ?? 0) : imageUrls.count
+    }
+
+    /// Title shown in the toolbar — filename, or filename + frame indicator.
+    public var currentDisplayTitle: String? {
+        if isFrameMode, let source = frameSource {
+            return "\(source.sourceURL.lastPathComponent) — Frame \(currentIndex + 1)/\(source.frameCount)"
+        }
+        return currentFileName
+    }
     
     private var accessingDirectories: Set<URL> = []
     
@@ -26,6 +47,7 @@ public class ImageViewModel: ObservableObject {
     }
     
     public var currentFileUrl: URL? {
+        if isFrameMode { return frameSource?.sourceURL }
         guard currentIndex < imageUrls.count else { return nil }
         return imageUrls[currentIndex]
     }
@@ -41,18 +63,19 @@ public class ImageViewModel: ObservableObject {
     }
     
     deinit {
-        // Stop accessing all directories
         for directory in accessingDirectories {
             directory.stopAccessingSecurityScopedResource()
         }
     }
     
     public func loadImages(from urls: [URL], startingAt startIndex: Int? = nil, grantedDirectory: URL? = nil) {
+        // Exit frame mode when loading a new set of images
+        if isFrameMode { exitFrameMode() }
+
         Logger.imageOperations.info("Loading images from \(urls.count) URLs")
         
-        let validExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
+        let validExtensions = ["jpg", "jpeg", "png", "apng", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "svg"]
         
-        // Filter only image files
         var imageUrls = urls.filter { url in
             return validExtensions.contains(url.pathExtension.lowercased())
         }
@@ -64,13 +87,10 @@ public class ImageViewModel: ObservableObject {
             return 
         }
         
-        // If startingAt is provided, skip directory scanning and use the provided list
         if let startIndex = startIndex {
-            // Sort by name
-            self.imageUrls = imageUrls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            self.imageUrls = imageUrls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             Logger.imageOperations.info("Using provided image list with \(self.imageUrls.count) images, starting at index \(startIndex)")
             
-            // Set starting index
             self.currentIndex = min(startIndex, self.imageUrls.count - 1)
             Logger.imageOperations.info("Set current index to \(self.currentIndex)")
             
@@ -78,13 +98,10 @@ public class ImageViewModel: ObservableObject {
             return
         }
         
-        // If only one image is loaded, try to load all images from the same directory
         if imageUrls.count == 1, let firstUrl = imageUrls.first {
-            // Use the pre-granted directory if available, otherwise derive from file URL
             let directory = grantedDirectory ?? firstUrl.deletingLastPathComponent()
             Logger.imageOperations.info("Single image detected, scanning directory: \(directory.path)")
             
-            // Only start security-scoped access on the file if no directory was pre-granted
             let accessing: Bool
             if grantedDirectory == nil {
                 accessing = firstUrl.startAccessingSecurityScopedResource()
@@ -126,24 +143,19 @@ public class ImageViewModel: ObservableObject {
             } catch {
                 Logger.imageOperations.error("Failed to scan directory '\(directory.path)': \(error.localizedDescription)")
                 Logger.imageOperations.error("Directory scan error details: \(error)")
-                // Signal the UI to prompt the user for folder access
                 self.pendingDirectoryAccess = directory
             }
         }
         
-        // Sort by name
-        self.imageUrls = imageUrls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        self.imageUrls = imageUrls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
         Logger.imageOperations.info("Final image list has \(self.imageUrls.count) images")
         
-        // Log all image names for debugging
         if self.imageUrls.count <= 10 {
             for (index, url) in self.imageUrls.enumerated() {
                 Logger.imageOperations.debug("  [\(index)]: \(url.lastPathComponent)")
             }
         }
         
-        // Find the index of the originally selected image (compare by lastPathComponent
-        // to handle URL normalization differences between Finder and FileManager)
         if let firstUrl = urls.first {
             let targetName = firstUrl.lastPathComponent
             if let index = self.imageUrls.firstIndex(where: { $0.lastPathComponent == targetName }) {
@@ -162,7 +174,6 @@ public class ImageViewModel: ObservableObject {
     }
     
     /// Re-scan the directory after the user grants folder access.
-    /// Called from the UI after NSOpenPanel or bookmark restore succeeds.
     public func rescanDirectory(_ directory: URL) {
         pendingDirectoryAccess = nil
         grantDirectoryAccess(directory)
@@ -172,28 +183,98 @@ public class ImageViewModel: ObservableObject {
     }
     
     public func selectImage(at index: Int) {
-        guard index >= 0 && index < imageUrls.count else { return }
-        Logger.imageOperations.debug("Selecting image at index \(index)")
-        currentIndex = index
-        loadCurrentImage()
+        if isFrameMode {
+            guard let source = frameSource, index >= 0, index < source.frameCount else { return }
+            Logger.imageOperations.debug("Selecting frame \(index)")
+            currentIndex = index
+            loadCurrentFrame()
+        } else {
+            guard index >= 0, index < imageUrls.count else { return }
+            Logger.imageOperations.debug("Selecting image at index \(index)")
+            currentIndex = index
+            loadCurrentImage()
+        }
     }
     
     public func nextImage() {
-        guard !imageUrls.isEmpty else { return }
-        let oldIndex = currentIndex
-        currentIndex = (currentIndex + 1) % imageUrls.count
-        Logger.ui.info("Next image: \(oldIndex) -> \(self.currentIndex)")
-        loadCurrentImage()
+        if isFrameMode {
+            guard let source = frameSource else { return }
+            let oldIndex = currentIndex
+            currentIndex = (currentIndex + 1) % source.frameCount
+            Logger.ui.info("Next frame: \(oldIndex) -> \(self.currentIndex)")
+            loadCurrentFrame()
+        } else {
+            guard !imageUrls.isEmpty else { return }
+            let oldIndex = currentIndex
+            currentIndex = (currentIndex + 1) % imageUrls.count
+            Logger.ui.info("Next image: \(oldIndex) -> \(self.currentIndex)")
+            loadCurrentImage()
+        }
     }
     
     public func previousImage() {
-        guard !imageUrls.isEmpty else { return }
-        let oldIndex = currentIndex
-        currentIndex = (currentIndex - 1 + imageUrls.count) % imageUrls.count
-        Logger.ui.info("Previous image: \(oldIndex) -> \(self.currentIndex)")
+        if isFrameMode {
+            guard let source = frameSource else { return }
+            let oldIndex = currentIndex
+            currentIndex = (currentIndex - 1 + source.frameCount) % source.frameCount
+            Logger.ui.info("Previous frame: \(oldIndex) -> \(self.currentIndex)")
+            loadCurrentFrame()
+        } else {
+            guard !imageUrls.isEmpty else { return }
+            let oldIndex = currentIndex
+            currentIndex = (currentIndex - 1 + imageUrls.count) % imageUrls.count
+            Logger.ui.info("Previous image: \(oldIndex) -> \(self.currentIndex)")
+            loadCurrentImage()
+        }
+    }
+
+    // MARK: - Frame Mode
+
+    public func enterFrameMode() {
+        guard !isFrameMode,
+              let url = currentFileUrl,
+              isCurrentImageAPNG else { return }
+
+        Logger.imageOperations.info("Entering APNG frame mode for \(url.lastPathComponent)")
+
+        let fileIndex = currentIndex
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let source = APNGFrameSource(url: url) else {
+                Logger.imageOperations.error("Failed to create APNGFrameSource for \(url.lastPathComponent)")
+                return
+            }
+            let firstFrame = source.frame(at: 0)
+
+            DispatchQueue.main.async {
+                self.savedFileIndex = fileIndex
+                self.frameSource = source
+                self.isFrameMode = true
+                self.currentIndex = 0
+                if let firstFrame {
+                    self.currentImage = firstFrame
+                }
+                Logger.imageOperations.info("Frame mode active: \(source.frameCount) frames")
+            }
+        }
+    }
+
+    public func exitFrameMode() {
+        guard isFrameMode else { return }
+        Logger.imageOperations.info("Exiting APNG frame mode")
+
+        isFrameMode = false
+        frameSource = nil
+
+        if let saved = savedFileIndex {
+            currentIndex = saved
+            savedFileIndex = nil
+        }
+
         loadCurrentImage()
     }
-    
+
+    // MARK: - Private
+
     private func loadCurrentImage() {
         guard currentIndex < imageUrls.count else { 
             Logger.imageOperations.error("Current index \(self.currentIndex) out of bounds (count: \(self.imageUrls.count))")
@@ -203,13 +284,44 @@ public class ImageViewModel: ObservableObject {
         Logger.imageOperations.info("Loading image: \(url.lastPathComponent)")
         
         DispatchQueue.global(qos: .userInitiated).async {
-            if let image = NSImage(contentsOf: url) {
-                Logger.imageOperations.debug("Successfully loaded image: \(url.lastPathComponent), size: \(image.size.width)x\(image.size.height)")
+            guard let data = try? Data(contentsOf: url) else {
+                Logger.imageOperations.error("Failed to read data for \(url.lastPathComponent)")
+                return
+            }
+
+            guard let image = NSImage(data: data) else {
+                Logger.imageOperations.error("Failed to load image: \(url.lastPathComponent)")
+                return
+            }
+
+            // Detect APNG: multi-frame PNG
+            var apng = false
+            if let source = CGImageSourceCreateWithData(data as CFData, nil),
+               let utType = CGImageSourceGetType(source) as String?,
+               utType == "public.png",
+               CGImageSourceGetCount(source) > 1 {
+                apng = true
+            }
+
+            Logger.imageOperations.debug("Loaded \(url.lastPathComponent), size: \(image.size.width)x\(image.size.height), apng: \(apng)")
+
+            DispatchQueue.main.async {
+                self.currentImage = image
+                self.isCurrentImageAPNG = apng
+            }
+        }
+    }
+
+    private func loadCurrentFrame() {
+        guard let source = frameSource else { return }
+        let index = currentIndex
+        guard index < source.frameCount else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let image = source.frame(at: index) {
                 DispatchQueue.main.async {
                     self.currentImage = image
                 }
-            } else {
-                Logger.imageOperations.error("Failed to load image: \(url.lastPathComponent)")
             }
         }
     }

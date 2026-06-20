@@ -87,6 +87,47 @@ public struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 
+                if !settings.autoResizeWindow {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Zoom Mode")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        ForEach(ZoomMode.allCases) { mode in
+                            HStack {
+                                Button(action: {
+                                    settings.zoomMode = mode
+                                }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: settings.zoomMode == mode ? "circle.inset.filled" : "circle")
+                                            .foregroundColor(settings.zoomMode == mode ? .blue : .secondary)
+                                        
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(mode.displayName)
+                                                .font(.body)
+                                                .foregroundColor(.primary)
+                                            
+                                            Text(mode.description)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Spacer()
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(settings.zoomMode == mode ? Color.blue.opacity(0.1) : Color.clear)
+                            )
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                
                 Toggle(isOn: $settings.singleWindowMode) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Single Window Mode")
@@ -98,6 +139,46 @@ public struct SettingsView: View {
                     }
                 }
                 .toggleStyle(.switch)
+            }
+            .padding()
+            
+            Divider()
+            
+            VStack(alignment: .leading, spacing: 16) {
+                Text("APNG Behavior")
+                    .font(.headline)
+                
+                ForEach(APNGDisplayMode.allCases) { mode in
+                    HStack {
+                        Button(action: {
+                            settings.apngDefaultMode = mode
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: settings.apngDefaultMode == mode ? "circle.inset.filled" : "circle")
+                                    .foregroundColor(settings.apngDefaultMode == mode ? .blue : .secondary)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(mode.displayName)
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    
+                                    Text(mode.description)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(settings.apngDefaultMode == mode ? Color.blue.opacity(0.1) : Color.clear)
+                    )
+                }
             }
             .padding()
             
@@ -137,7 +218,7 @@ public struct SettingsView: View {
             
             Spacer()
         }
-        .frame(width: 450, height: 520)
+        .frame(width: 450, height: 850)
         .padding()
         .onAppear {
             isDefaultViewer = checkIsDefaultViewer()

@@ -64,6 +64,13 @@ struct ImageMateApp: App {
                 .keyboardShortcut("s", modifiers: [.command, .shift])
             }
             
+            CommandGroup(replacing: .pasteboard) {
+                Button("Copy") {
+                    copyImage()
+                }
+                .keyboardShortcut("c", modifiers: .command)
+            }
+            
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {
                     openSettings()
@@ -78,6 +85,11 @@ struct ImageMateApp: App {
         // Trigger the open image action in the ContentView
         // We need to post a notification that ContentView can listen to
         NotificationCenter.default.post(name: NSNotification.Name("OpenImageFromMenu"), object: nil)
+    }
+    
+    private func copyImage() {
+        logger.info("📋 Copy image menu triggered")
+        NotificationCenter.default.post(name: NSNotification.Name("CopyImageFromMenu"), object: nil)
     }
     
     private func exportImage() {
